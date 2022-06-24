@@ -191,7 +191,8 @@ public class ClassInitializationFeature implements InternalFeature {
                                 .collect(Collectors.toList());
                 if (!unspecifiedClasses.isEmpty()) {
                     System.err.println("The following classes have unspecified initialization policy:" + System.lineSeparator() + String.join(System.lineSeparator(), unspecifiedClasses));
-                    UserError.abort("To fix the error either specify the initialization policy for given classes or set %s",
+                    // Temporary not an error to allow testing of new policy
+                    System.err.println("To fix the error either specify the initialization policy for given classes or set " +
                                     SubstrateOptionsParser.commandArgument(ClassInitializationOptions.AssertInitializationSpecifiedForAllClasses, "-"));
                 }
             }

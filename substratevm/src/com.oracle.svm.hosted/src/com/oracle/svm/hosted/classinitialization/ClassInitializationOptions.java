@@ -101,5 +101,5 @@ public final class ClassInitializationOptions {
     public static final HostedOptionKey<Boolean> AssertInitializationSpecifiedForAllClasses = new HostedOptionKey<>(false);
 
     @Option(help = "Use new class initialization strategy that allows all classes to be used at image build time.", type = OptionType.Expert)//
-    public static final HostedOptionKey<Boolean> UseNewExperimentalClassInitialization = new HostedOptionKey<>(false);
+    public static final HostedOptionKey<Boolean> UseNewExperimentalClassInitialization = new HostedOptionKey<>(true);
 }

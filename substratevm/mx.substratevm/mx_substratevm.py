@@ -1362,8 +1362,9 @@ def clinittest(args):
             with open(classes_file) as f:
                 for line in f:
                     checkLine(line, "MustBeDelayed", "RUN_TIME", "classes are initialized at run time by default", wrongly_initialized_lines)
-                    checkLine(line, "MustBeSafeEarly", "BUILD_TIME", "class proven as side-effect free before analysis", wrongly_initialized_lines)
-                    checkLine(line, "MustBeSafeLate", "BUILD_TIME", "class proven as side-effect free after analysis", wrongly_initialized_lines)
+                    # temporarily disabled, without partial evaluation of class initializer we do not initialize anything at build time
+                    # checkLine(line, "MustBeSafeEarly", "BUILD_TIME", "class proven as side-effect free before analysis", wrongly_initialized_lines)
+                    # checkLine(line, "MustBeSafeLate", "BUILD_TIME", "class proven as side-effect free after analysis", wrongly_initialized_lines)
                 if len(wrongly_initialized_lines) > 0:
                     msg = ""
                     for (line, error) in wrongly_initialized_lines:

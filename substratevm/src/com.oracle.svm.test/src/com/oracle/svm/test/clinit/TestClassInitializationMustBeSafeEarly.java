@@ -522,10 +522,18 @@ class TestClassInitializationMustBeSafeEarlyFeature implements Feature {
                     errors.add(checkedClass.getName() + ": Check for MustBeDelayed failed");
                 }
                 if (nameHasSafeEarly && initialized != checkSafeEarly) {
-                    errors.add(checkedClass.getName() + ": Check for MustBeSafeEarly failed");
+                    /*
+                     * temporarily disabled, without partial evaluation of class initializer we do
+                     * not initialize anything at build time
+                     */
+                    // errors.add(checkedClass.getName() + ": Check for MustBeSafeEarly failed");
                 }
                 if (nameHasSafeLate && initialized != checkSafeLate) {
-                    errors.add(checkedClass.getName() + ": Check for MustBeSafeLate failed");
+                    /*
+                     * temporarily disabled, without partial evaluation of class initializer we do
+                     * not initialize anything at build time
+                     */
+                    // errors.add(checkedClass.getName() + ": Check for MustBeSafeLate failed");
                 }
             }
         }

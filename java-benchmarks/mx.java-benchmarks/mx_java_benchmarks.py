@@ -397,7 +397,10 @@ class BaseTikaBenchmarkSuite(BaseQuarkusBenchmarkSuite):
         if mx.get_jdk().version < expectedJdkVersion:
             mx.abort(benchmark + " needs at least JDK version " + str(expectedJdkVersion))
 
-        return super(BaseTikaBenchmarkSuite, self).extra_image_build_argument(benchmark, args)
+        return [
+                   # Workaround for wrong class initialization configuration
+                   '--initialize-at-build-time=org.apache.pdfbox.rendering.ImageType$1,org.apache.pdfbox.rendering.ImageType$2,org.apache.pdfbox.rendering.ImageType$3,org.apache.pdfbox.rendering.ImageType$4',
+               ] + super(BaseTikaBenchmarkSuite, self).extra_image_build_argument(benchmark, args)
 
 
 class TikaWrkBenchmarkSuite(BaseTikaBenchmarkSuite, mx_sdk_benchmark.BaseWrkBenchmarkSuite):
@@ -467,6 +470,8 @@ class BaseMicronautBenchmarkSuite(BaseMicroserviceBenchmarkSuite):
     def extra_image_build_argument(self, benchmark, args):
         return [
                    '--add-exports=org.graalvm.nativeimage.builder/com.oracle.svm.core.jdk=ALL-UNNAMED',
+                   # Workaround for wrong class initialization configuration
+                   '--initialize-at-build-time=io.netty.handler.codec.http.cookie.ServerCookieEncoder',
                ] + super(BaseMicronautBenchmarkSuite, self).extra_image_build_argument(benchmark, args)
 
     def default_stages(self):
