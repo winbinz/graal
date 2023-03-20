@@ -165,7 +165,8 @@ public final class NodeParser extends AbstractParser<NodeData> {
 
     private enum ParseMode {
         DEFAULT,
-        EXPORTED_MESSAGE
+        EXPORTED_MESSAGE,
+        OPERATION,
     }
 
     private boolean nodeOnly;
@@ -202,6 +203,10 @@ public final class NodeParser extends AbstractParser<NodeData> {
 
     public static NodeParser createDefaultParser() {
         return new NodeParser(ParseMode.DEFAULT, null, null, false);
+    }
+
+    public static NodeParser createOperationParser() {
+        return new NodeParser(ParseMode.OPERATION, null, null, false);
     }
 
     @Override
@@ -295,6 +300,10 @@ public final class NodeParser extends AbstractParser<NodeData> {
         }
 
         if (mode == ParseMode.DEFAULT && !getRepeatedAnnotation(templateType.getAnnotationMirrors(), types.ExportMessage).isEmpty()) {
+            return null;
+        }
+
+        if (mode == ParseMode.DEFAULT && findAnnotationMirror(templateType.getAnnotationMirrors(), types.Operation) != null) {
             return null;
         }
 
@@ -418,7 +427,7 @@ public final class NodeParser extends AbstractParser<NodeData> {
         initializeAOT(node);
         boolean recommendInline = initializeInlinable(resolver, node);
 
-        if (mode == ParseMode.DEFAULT) {
+        if (mode == ParseMode.DEFAULT || mode == ParseMode.OPERATION) {
             boolean emitWarnings = TruffleProcessorOptions.cacheSharingWarningsEnabled(processingEnv) && //
                             !TruffleProcessorOptions.generateSlowPathOnly(processingEnv);
             node.setSharedCaches(computeSharing(node.getTemplateType(), Arrays.asList(node), emitWarnings));
@@ -453,6 +462,9 @@ public final class NodeParser extends AbstractParser<NodeData> {
         globalMembers.addAll(members);
         globalMembers.add(new CodeVariableElement(types.Node, "this"));
         globalMembers.add(new CodeVariableElement(types.Node, NODE_KEYWORD));
+        if (mode == ParseMode.OPERATION) {
+            globalMembers.add(new CodeVariableElement(types.Node, "$root"));
+        }
         return new DSLExpressionResolver(context, node.getTemplateType(), globalMembers);
     }
 
@@ -1147,7 +1159,10 @@ public final class NodeParser extends AbstractParser<NodeData> {
                         declaringElement = node.getTemplateType().getEnclosingElement();
                         if (!declaringElement.getKind().isClass() &&
                                         !declaringElement.getKind().isInterface()) {
-                            throw new AssertionError("Unexpected declared element for generated element: " + declaringElement.toString());
+                            // throw new AssertionError("Unexpected declared element for generated
+                            // element: " + declaringElement.toString());
+
+                            declaringElement = node.getTemplateType();
                         }
                     } else {
                         declaringElement = node.getTemplateType();
@@ -2468,7 +2483,12 @@ public final class NodeParser extends AbstractParser<NodeData> {
         List<TypeElement> lookupTypes = collectSuperClasses(new ArrayList<TypeElement>(), templateType);
 
         // Declaration order is not required for child nodes.
-        List<? extends Element> members = processingEnv.getElementUtils().getAllMembers(templateType);
+        List<? extends Element> members;
+        if (templateType instanceof CodeTypeElement) {
+            members = templateType.getEnclosedElements();
+        } else {
+            members = processingEnv.getElementUtils().getAllMembers(templateType);
+        }
         NodeData node = parseNodeData(templateType, lookupTypes);
         if (node.hasErrors()) {
             return node;

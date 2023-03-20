@@ -41,8 +41,10 @@
 package com.oracle.truffle.sl.nodes.expression;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
+import com.oracle.truffle.api.dsl.Bind;
 import com.oracle.truffle.api.dsl.Fallback;
 import com.oracle.truffle.api.dsl.Specialization;
+import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.nodes.NodeInfo;
 import com.oracle.truffle.sl.SLException;
 import com.oracle.truffle.sl.nodes.SLBinaryNode;
@@ -55,18 +57,18 @@ import com.oracle.truffle.sl.runtime.SLBigNumber;
 public abstract class SLLessOrEqualNode extends SLBinaryNode {
 
     @Specialization
-    protected boolean lessOrEqual(long left, long right) {
+    public static boolean lessOrEqual(long left, long right) {
         return left <= right;
     }
 
     @Specialization
     @TruffleBoundary
-    protected boolean lessOrEqual(SLBigNumber left, SLBigNumber right) {
+    public static boolean lessOrEqual(SLBigNumber left, SLBigNumber right) {
         return left.compareTo(right) <= 0;
     }
 
     @Fallback
-    protected Object typeError(Object left, Object right) {
-        throw SLException.typeError(this, left, right);
+    public static Object typeError(Object left, Object right, @Bind("this") Node node, @Bind("$bci") int bci) {
+        throw SLException.typeError(node, "<=", bci, left, right);
     }
 }

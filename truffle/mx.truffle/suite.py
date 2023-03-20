@@ -236,6 +236,7 @@ suite = {
         "sdk:GRAAL_SDK",
         "com.oracle.truffle.api.instrumentation",
         "com.oracle.truffle.api.exception",
+        "com.oracle.truffle.api.operation",
       ],
       "requires" : [
         "java.logging",
@@ -344,6 +345,42 @@ suite = {
       "javaCompliance" : "11+",
       "workingSets" : "API,Truffle",
     },
+    
+    "com.oracle.truffle.api.operation" : {
+      "subDir" : "src",
+      "sourceDirs" : ["src"],
+      "dependencies" : [
+        "com.oracle.truffle.api",
+        "com.oracle.truffle.api.library",
+        "com.oracle.truffle.api.interop",
+        "com.oracle.truffle.api.exception",
+        "com.oracle.truffle.api.instrumentation", 
+        "TruffleJSON",
+      ],
+      "requires" : [
+        "jdk.unsupported", # sun.misc.Unsafe
+      ],
+      "checkstyle" : "com.oracle.truffle.api",
+      "annotationProcessors" : ["TRUFFLE_DSL_PROCESSOR"],
+      "javaCompliance" : "11+",
+      "workingSets" : "API,Truffle",
+    },
+    
+    "com.oracle.truffle.api.operation.test" : {
+      "subDir" : "src",
+      "sourceDirs" : ["src"],
+      "dependencies" : [
+        "TRUFFLE_API",
+        "mx:JUNIT",
+        "mx:JMH_1_21",
+      ],
+      "checkstyle" : "com.oracle.truffle.dsl.processor",
+      "javaCompliance" : "11+",
+      "annotationProcessors" : ["mx:JMH_1_21", "TRUFFLE_DSL_PROCESSOR"],
+      "workingSets" : "API,Truffle,Codegen,Test",
+      "testProject" : True,
+      "jacoco" : "exclude",
+    },
 
     "com.oracle.truffle.api.dsl" : {
       "subDir" : "src",
@@ -412,7 +449,8 @@ suite = {
       "subDir" : "src",
       "sourceDirs" : ["src"],
       "dependencies" : [
-        "truffle:ANTLR4"
+        "truffle:ANTLR4",
+        "TruffleJSON",
       ],
       "requires" : [
         "java.compiler",
@@ -1058,7 +1096,7 @@ suite = {
           "jdk.unsupported", # sun.misc.Unsafe
           "java.logging",
           "java.management",
-          "java.sql" # java.sql.date java.sql.Time
+          "java.sql", # java.sql.date java.sql.Time
         ],
         "exports" : [
           # Qualified exports
@@ -1091,6 +1129,7 @@ suite = {
           "com.oracle.truffle.api",
           "com.oracle.truffle.api.instrumentation",
           "com.oracle.truffle.api.dsl",
+          "com.oracle.truffle.api.operation",
           "com.oracle.truffle.api.profiles",
           "com.oracle.truffle.api.interop",
           "com.oracle.truffle.api.exception",
@@ -1110,6 +1149,7 @@ suite = {
       "dependencies" : [
         "com.oracle.truffle.api",
         "com.oracle.truffle.api.exception",
+        "com.oracle.truffle.api.operation",
         "com.oracle.truffle.api.dsl",
         "com.oracle.truffle.api.profiles",
         "com.oracle.truffle.api.debug",
@@ -1393,6 +1433,7 @@ suite = {
          "com.oracle.truffle.api.instrumentation.test",
          "com.oracle.truffle.api.debug.test",
          "com.oracle.truffle.api.strings.test",
+         "com.oracle.truffle.api.operation.test",
          "com.oracle.truffle.object.basic.test",
          "com.oracle.truffle.nfi.test",
          "com.oracle.truffle.api.staticobject.test",
