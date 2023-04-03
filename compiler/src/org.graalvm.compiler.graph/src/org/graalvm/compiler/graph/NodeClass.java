@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -133,7 +133,7 @@ public final class NodeClass<T> extends FieldIntrospection<T> {
     public static <T> NodeClass<T> get(Class<T> clazz) {
         NodeClass<T> result = getUnchecked(clazz);
         if (result == null && clazz != NODE_CLASS) {
-            throw GraalError.shouldNotReachHere("TYPE field not initialized for class " + clazz.getTypeName());
+            throw GraalError.shouldNotReachHere("TYPE field not initialized for class " + clazz.getTypeName()); // ExcludeFromJacocoGeneratedReport
         }
         return result;
     }
@@ -514,7 +514,7 @@ public final class NodeClass<T> extends FieldIntrospection<T> {
                     if (SUCCESSOR_LIST_CLASS.isAssignableFrom(type)) {
                         // NodeSuccessorList fields should not be final since they are
                         // written (via Unsafe) in clearSuccessors()
-                        GraalError.guarantee(!Modifier.isFinal(modifiers), "NodeSuccessorList successor field % should not be final", field);
+                        GraalError.guarantee(!Modifier.isFinal(modifiers), "NodeSuccessorList successor field %s should not be final", field);
                         GraalError.guarantee(!Modifier.isPublic(modifiers), "NodeSuccessorList successor field %s should not be public", field);
                     } else {
                         GraalError.guarantee(NODE_CLASS.isAssignableFrom(type), "invalid successor type: %s", type);
@@ -569,7 +569,7 @@ public final class NodeClass<T> extends FieldIntrospection<T> {
         } else if (o instanceof boolean[]) {
             return Arrays.hashCode((boolean[]) o);
         } else {
-            throw shouldNotReachHere();
+            throw shouldNotReachHere(); // ExcludeFromJacocoGeneratedReport
         }
     }
 
@@ -646,7 +646,7 @@ public final class NodeClass<T> extends FieldIntrospection<T> {
         } else if (e1 instanceof boolean[]) {
             return Arrays.equals((boolean[]) e1, (boolean[]) e2);
         } else {
-            throw shouldNotReachHere();
+            throw shouldNotReachHere(); // ExcludeFromJacocoGeneratedReport
         }
     }
 
@@ -838,7 +838,7 @@ public final class NodeClass<T> extends FieldIntrospection<T> {
             node.init((NodeClass<? extends Node>) this);
             return node;
         } catch (InstantiationException ex) {
-            throw shouldNotReachHere(ex);
+            throw shouldNotReachHere(ex); // ExcludeFromJacocoGeneratedReport
         }
     }
 

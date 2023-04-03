@@ -31,6 +31,7 @@ import jdk.vm.ci.meta.MetaAccessProvider;
 import jdk.vm.ci.meta.ResolvedJavaField;
 import jdk.vm.ci.meta.ResolvedJavaType;
 
+@SuppressWarnings("this-escape")
 public class KnownTruffleTypes extends AbstractKnownTruffleTypes {
 
     public final ResolvedJavaType classFrameClass = lookupType("com.oracle.truffle.api.impl.FrameWithoutBoxing");
@@ -41,6 +42,8 @@ public class KnownTruffleTypes extends AbstractKnownTruffleTypes {
     public final ResolvedJavaType truffleStringType = lookupType("com.oracle.truffle.api.strings.TruffleString");
     public final ResolvedJavaField truffleStringDataField = findField(abstractTruffleStringType, "data");
     public final ResolvedJavaField truffleStringHashCodeField = findField(abstractTruffleStringType, "hashCode");
+    public final ResolvedJavaField truffleStringCodeRangeField = findField(abstractTruffleStringType, "codeRange");
+    public final ResolvedJavaField truffleStringCodePointLengthField = findField(abstractTruffleStringType, "codePointLength");
     public final ResolvedJavaType classMethodHandle = lookupType(MethodHandle.class);
 
     public final ResolvedJavaField fieldDescriptor = findField(classFrameClass, "descriptor");
@@ -53,7 +56,7 @@ public class KnownTruffleTypes extends AbstractKnownTruffleTypes {
     public final ResolvedJavaField fieldEmptyLongArray = findField(classFrameClass, "EMPTY_LONG_ARRAY");
     public final ResolvedJavaField fieldEmptyByteArray = findField(classFrameClass, "EMPTY_BYTE_ARRAY");
 
-    public final ResolvedJavaField[] frameFields = getInstanceFields(classFrameClass, true);
+    public final ResolvedJavaField[] frameFields = classFrameClass.getInstanceFields(true);
 
     public final ResolvedJavaField fieldFrameDescriptorDefaultValue = findField(classFrameDescriptor, "defaultValue");
     public final ResolvedJavaField fieldFrameDescriptorMaterializeCalled = findField(classFrameDescriptor, "materializeCalled");

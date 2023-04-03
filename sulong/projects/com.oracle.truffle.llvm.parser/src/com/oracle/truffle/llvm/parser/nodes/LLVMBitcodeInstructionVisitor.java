@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2022, Oracle and/or its affiliates.
+ * Copyright (c) 2019, 2023, Oracle and/or its affiliates.
  *
  * All rights reserved.
  *
@@ -416,7 +416,7 @@ public final class LLVMBitcodeInstructionVisitor implements SymbolVisitor {
         argTypes.set(argIndex, new PointerType(null));
         argIndex++;
 
-        if (targetType instanceof StructureType) {
+        if (targetType instanceof StructureType || targetType instanceof ArrayType) {
             argTypes.set(argIndex, new PointerType(targetType));
             argNodes[argIndex] = nodeFactory.createGetUniqueStackSpace(targetType, uniquesRegion);
             argIndex++;
@@ -695,7 +695,7 @@ public final class LLVMBitcodeInstructionVisitor implements SymbolVisitor {
 
         ensureSupportedOperandBundle(target, call.getOperandBundle());
 
-        if (targetType instanceof StructureType) {
+        if (targetType instanceof StructureType || targetType instanceof ArrayType) {
             argTypes.set(argIndex, new PointerType(targetType));
             argNodes[argIndex] = nodeFactory.createGetUniqueStackSpace(targetType, uniquesRegion);
             argIndex++;
@@ -799,7 +799,7 @@ public final class LLVMBitcodeInstructionVisitor implements SymbolVisitor {
 
     private static int getArgumentCount(int argumentCount, final Type targetType) {
         int count = argumentCount;
-        if (targetType instanceof StructureType) {
+        if (targetType instanceof StructureType || targetType instanceof ArrayType) {
             count++;
         }
         count++; // stackpointer
@@ -1433,6 +1433,11 @@ public final class LLVMBitcodeInstructionVisitor implements SymbolVisitor {
 
     private void assignSourceLocation(LLVMInstrumentableNode node, Instruction sourceInstruction, SourceInstrumentationStrategy instrumentationStrategy) {
         if (node == null) {
+            return;
+        }
+
+        if (!node.isAdoptable()) {
+            // don't assign source sections to cacheable nodes
             return;
         }
 

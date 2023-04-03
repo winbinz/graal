@@ -98,6 +98,7 @@ import org.graalvm.compiler.phases.contract.VerifyNodeCosts;
 import org.graalvm.compiler.phases.tiers.HighTierContext;
 import org.graalvm.compiler.phases.util.Providers;
 import org.graalvm.compiler.runtime.RuntimeProvider;
+import org.graalvm.compiler.serviceprovider.GraalUnsafeAccess;
 import org.graalvm.word.LocationIdentity;
 import org.junit.Assert;
 import org.junit.Assume;
@@ -256,7 +257,7 @@ public class CheckGraalInvariants extends GraalCompilerTest {
                 try {
                     if (path.equals(JRT_CLASS_PATH_ENTRY)) {
                         for (String className : ModuleSupport.getJRTGraalClassNames()) {
-                            if (isGSON(className)) {
+                            if (isGSON(className) || isONNX(className)) {
                                 continue;
                             }
                             classNames.add(className);
@@ -272,7 +273,7 @@ public class CheckGraalInvariants extends GraalCompilerTest {
                                 String name = root.relativize(p).toString();
                                 if (name.endsWith(".class") && !name.startsWith("META-INF/versions/")) {
                                     String className = name.substring(0, name.length() - ".class".length()).replace('/', '.');
-                                    if (!(isInNativeImage(className) || isGSON(className))) {
+                                    if (!(isInNativeImage(className) || isGSON(className) || isONNX(className))) {
                                         classNames.add(className);
                                     }
                                 }
@@ -284,7 +285,7 @@ public class CheckGraalInvariants extends GraalCompilerTest {
                                 String name = zipEntry.getName();
                                 if (name.endsWith(".class") && !name.startsWith("META-INF/versions/")) {
                                     String className = name.substring(0, name.length() - ".class".length()).replace('/', '.');
-                                    if (isInNativeImage(className) || isGSON(className)) {
+                                    if (isInNativeImage(className) || isGSON(className) || isONNX(className)) {
                                         continue;
                                     }
                                     classNames.add(className);
@@ -534,6 +535,13 @@ public class CheckGraalInvariants extends GraalCompilerTest {
         return className.contains("com.google.gson");
     }
 
+    /**
+     * ONNXRuntime: do not check for the svm invariants.
+     */
+    private static boolean isONNX(String className) {
+        return className.contains("ai.onnxruntime");
+    }
+
     private static List<Class<?>> loadClasses(InvariantsTool tool, List<String> classNames) {
         List<Class<?>> classes = new ArrayList<>(classNames.size());
         for (String className : classNames) {
@@ -542,11 +550,19 @@ public class CheckGraalInvariants extends GraalCompilerTest {
             }
             try {
                 Class<?> c = Class.forName(className, false, CheckGraalInvariants.class.getClassLoader());
+                if (Node.class.isAssignableFrom(c)) {
+                    /*
+                     * Eagerly initialize Node classes because the VerifyNodeCosts checker will
+                     * initialize them anyway, and doing it here eagerly while being single-threaded
+                     * avoids race conditions.
+                     */
+                    GraalUnsafeAccess.getUnsafe().ensureClassInitialized(c);
+                }
                 classes.add(c);
             } catch (UnsupportedClassVersionError e) {
                 // graal-test.jar can contain classes compiled for different Java versions
             } catch (Throwable t) {
-                GraalError.shouldNotReachHere(t);
+                GraalError.shouldNotReachHere(t); // ExcludeFromJacocoGeneratedReport
             }
         }
         return classes;
@@ -566,6 +582,15 @@ public class CheckGraalInvariants extends GraalCompilerTest {
             // SingleMemoryKill or MultiMemoryKill.
             assert !MemoryKill.class.isAssignableFrom(c) || Modifier.isAbstract(c.getModifiers()) || SingleMemoryKill.class.isAssignableFrom(c) || MultiMemoryKill.class.isAssignableFrom(c) : c +
                             " must inherit from either SingleMemoryKill or MultiMemoryKill";
+        }
+        if (c.equals(DebugContext.class)) {
+            try {
+                // there are many log/logIndent methods, check the 2 most basic versions
+                c.getDeclaredMethod("log", String.class);
+                c.getDeclaredMethod("logAndIndent", String.class);
+            } catch (NoSuchMethodException | SecurityException e) {
+                throw new VerificationError("DebugContext misses basic log/logAndIndent methods", e);
+            }
         }
         for (VerifyPhase<CoreProviders> verifier : verifiers) {
             verifier.verifyClass(c, metaAccess);

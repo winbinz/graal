@@ -39,9 +39,9 @@
 # SOFTWARE.
 #
 suite = {
-  "mxversion" : "6.11.4",
+  "mxversion": "6.17.0",
   "name" : "sdk",
-  "version" : "23.0.0",
+  "version" : "23.1.0",
   "release" : False,
   "sourceinprojectwhitelist" : [],
   "url" : "https://github.com/oracle/graal",
@@ -107,6 +107,9 @@ suite = {
           "aarch64" : {
             "digest" : "sha512:75d9c41cc3861a021a38f78992c018713c3a06adaa2b343a62fb048596f080d26e4583cafc95cbf3747f9637b22c8156353a6557c6738cf0e68f671b549f31e3",
             "urls": ["https://lafo.ssw.uni-linz.ac.at/pub/graal-external-deps/upx/upx-3.96-arm64_linux.tar.gz"],
+          },
+          "<others>" : {
+            "optional": True,
           }
         },
         "windows" : {
@@ -120,14 +123,6 @@ suite = {
             "optional": True,
           }
         }
-      }
-    },
-    "JLINE" : {
-      "digest" : "sha512:27f6e2523e539383cede51d8eae7e97d49038c5a66cb4a94a9ce85165f16e7382b937a238cdb0c92e1136af56c5f57bcc6c04435a370c5d49f7e4bd32f0d9194",
-      "maven" : {
-        "groupId" : "jline",
-        "artifactId" : "jline",
-        "version" : "2.14.6",
       }
     },
     "JLINE3" : {
@@ -235,7 +230,7 @@ suite = {
       "sourceDirs" : ["src"],
       "dependencies" : [],
       "checkstyle" : "org.graalvm.word",
-      "javaCompliance" : "11+",
+      "javaCompliance" : "17+",
       "workingSets" : "API,SDK",
     },
     "org.graalvm.polyglot" : {
@@ -249,7 +244,7 @@ suite = {
         "java.logging",
       ],
       "checkstyle" : "org.graalvm.word",
-      "javaCompliance" : "11+",
+      "javaCompliance" : "17+",
       "workingSets" : "API,SDK",
     },
 
@@ -258,8 +253,8 @@ suite = {
       "sourceDirs" : ["src"],
       "dependencies" : [],
       "checkstyle" : "org.graalvm.word",
-      "javaCompliance" : "11+",
-      "checkstyleVersion" : "8.36.1",
+      "javaCompliance" : "17+",
+      "checkstyleVersion" : "10.7.0",
       "workingSets" : "API,SDK",
     },
 
@@ -271,7 +266,7 @@ suite = {
         "org.graalvm.options",
       ],
       "checkstyle" : "org.graalvm.word",
-      "javaCompliance" : "11+",
+      "javaCompliance" : "17+",
       "workingSets" : "API,SDK",
     },
     "com.oracle.svm.core.annotate" : {
@@ -281,7 +276,7 @@ suite = {
          "org.graalvm.nativeimage",
       ],
       "checkstyle" : "org.graalvm.word",
-      "javaCompliance" : "11+",
+      "javaCompliance" : "17+",
       "workingSets" : "API,SDK",
     },
     "org.graalvm.nativeimage.test" : {
@@ -291,7 +286,7 @@ suite = {
         "mx:JUNIT",
         "org.graalvm.nativeimage"
       ],
-      "javaCompliance" : "11+",
+      "javaCompliance" : "17+",
       "workingSets" : "SDK",
       "checkstyle" : "org.graalvm.word",
     },
@@ -300,7 +295,6 @@ suite = {
       "sourceDirs" : ["src"],
       "dependencies" : [
         "org.graalvm.polyglot",
-        "JLINE",
         "JLINE3",
       ],
       "requires" : [
@@ -309,7 +303,7 @@ suite = {
       "requiresConcealed" : {
         "java.base" : ["jdk.internal.module"],
       },
-      "javaCompliance" : "11+",
+      "javaCompliance" : "17+",
       "workingSets" : "Truffle,Tools",
       "checkstyle" : "org.graalvm.word",
     },
@@ -320,7 +314,7 @@ suite = {
         "mx:JUNIT",
         "org.graalvm.launcher"
       ],
-      "javaCompliance" : "11+",
+      "javaCompliance" : "17+",
       "workingSets" : "Truffle,Tools,Test",
       "checkstyle" : "org.graalvm.word",
     },
@@ -331,14 +325,14 @@ suite = {
         "org.graalvm.polyglot",
       ],
       "checkstyle" : "org.graalvm.word",
-      "javaCompliance" : "11+",
+      "javaCompliance" : "17+",
       "workingSets" : "API,SDK,Test",
     },
     "org.graalvm.collections" : {
       "subDir" : "src",
       "sourceDirs" : ["src"],
       "checkstyle" : "org.graalvm.word",
-      "javaCompliance" : "11+",
+      "javaCompliance" : "17+",
       "workingSets" : "API,SDK",
     },
     "org.graalvm.collections.test" : {
@@ -349,7 +343,7 @@ suite = {
         "org.graalvm.collections",
       ],
       "checkstyle" : "org.graalvm.word",
-      "javaCompliance" : "11+",
+      "javaCompliance" : "17+",
       "workingSets" : "API,SDK,Test",
     },
     "org.graalvm.home" : {
@@ -359,7 +353,7 @@ suite = {
         "org.graalvm.nativeimage",
       ],
       "checkstyle" : "org.graalvm.word",
-      "javaCompliance" : "11+",
+      "javaCompliance" : "17+",
       "workingSets" : "API,SDK",
     },
     "org.graalvm.home.test" : {
@@ -370,7 +364,7 @@ suite = {
         "org.graalvm.home",
       ],
       "checkstyle" : "org.graalvm.word",
-      "javaCompliance" : "11+",
+      "javaCompliance" : "17+",
       "workingSets" : "API,SDK",
     },
   },
@@ -429,7 +423,7 @@ suite = {
           "org.graalvm.word",
           "org.graalvm.polyglot.impl to org.graalvm.truffle, com.oracle.graal.graal_enterprise",
           "org.graalvm.word.impl to jdk.internal.vm.compiler",
-          "org.graalvm.nativeimage.impl to org.graalvm.nativeimage.base,org.graalvm.nativeimage.builder,org.graalvm.nativeimage.configure,com.oracle.svm.svm_enterprise",
+          "org.graalvm.nativeimage.impl to org.graalvm.nativeimage.pointsto,org.graalvm.nativeimage.base,org.graalvm.nativeimage.builder,org.graalvm.nativeimage.configure,com.oracle.svm.svm_enterprise,org.graalvm.extraimage.builder",
           "org.graalvm.nativeimage.impl.clinit to org.graalvm.nativeimage.builder",
         ],
         "uses" : [

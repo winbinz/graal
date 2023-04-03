@@ -111,6 +111,10 @@ public final class DataSection implements Iterable<Data> {
             return identityHashCodeString(this);
         }
 
+        public boolean isMutable() {
+            return false;
+        }
+
         @Override
         public boolean equals(Object obj) {
             assert ref != null;
@@ -309,7 +313,14 @@ public final class DataSection implements Iterable<Data> {
         closed = true;
 
         // simple heuristic: put items with larger alignment requirement first
-        dataItems.sort((a, b) -> a.alignment - b.alignment);
+        dataItems.sort((a, b) -> {
+            // Workaround JVMCI bug with nmethod entry barriers on aarch64 by forcing mutable data
+            // items at the beginning of the data section.
+            if (a.isMutable() != b.isMutable()) {
+                return Boolean.compare(b.isMutable(), a.isMutable());
+            }
+            return a.alignment - b.alignment;
+        });
 
         int position = 0;
         int alignment = 1;
@@ -389,15 +400,6 @@ public final class DataSection implements Iterable<Data> {
             d.emit(buffer, patch);
         }
         buffer.position(start + sectionSize);
-    }
-
-    public Data findData(DataSectionReference ref) {
-        for (Data d : dataItems) {
-            if (d.ref == ref) {
-                return d;
-            }
-        }
-        return null;
     }
 
     public static void emit(ByteBuffer buffer, Data data, Patches patch) {

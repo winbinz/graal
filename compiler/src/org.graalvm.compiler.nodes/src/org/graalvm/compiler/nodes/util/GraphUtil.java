@@ -314,7 +314,7 @@ public class GraphUtil {
                 while (iterator.hasNext()) {
                     Node curNode = iterator.next();
                     if (curNode.isDeleted()) {
-                        GraalError.shouldNotReachHere();
+                        GraalError.shouldNotReachHere(); // ExcludeFromJacocoGeneratedReport
                     } else {
                         if (curNode instanceof FixedNode && !(curNode instanceof AbstractMergeNode) && curNode.predecessor() != null) {
                             iterator.remove();
@@ -1059,7 +1059,7 @@ public class GraphUtil {
             if (getLowerer() != null) {
                 return getLowerer().divisionOverflowIsJVMSCompliant();
             } else {
-                // prevent accidental floating of divs if we dont know the target arch
+                // prevent accidental floating of divs if we don't know the target arch
                 return false;
             }
         }
@@ -1252,7 +1252,7 @@ public class GraphUtil {
                         MemoryPhiNode newPhi = phi.graph().unique(new MemoryPhiNode(merge, memoryPhi.getLocationIdentity(), new ValueNode[]{memoryPhi.valueAt(trueEnd), memoryPhi.valueAt(falseEnd)}));
                         replacementPhis.put(phi, newPhi);
                     } else {
-                        GraalError.shouldNotReachHere();
+                        GraalError.shouldNotReachHere(); // ExcludeFromJacocoGeneratedReport
                     }
                 }
                 assert loopBegin.phis().count() == replacementPhis.size();

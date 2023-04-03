@@ -40,15 +40,20 @@
  */
 package com.oracle.truffle.sl.nodes.expression;
 
+import static com.oracle.truffle.api.CompilerDirectives.shouldNotReachHere;
+
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.dsl.Bind;
 import com.oracle.truffle.api.dsl.Fallback;
 import com.oracle.truffle.api.dsl.Specialization;
 import com.oracle.truffle.api.nodes.Node;
+import com.oracle.truffle.api.interop.InteropLibrary;
+import com.oracle.truffle.api.interop.UnsupportedMessageException;
+import com.oracle.truffle.api.library.CachedLibrary;
 import com.oracle.truffle.api.nodes.NodeInfo;
 import com.oracle.truffle.sl.SLException;
 import com.oracle.truffle.sl.nodes.SLBinaryNode;
-import com.oracle.truffle.sl.runtime.SLBigNumber;
+import com.oracle.truffle.sl.runtime.SLBigInteger;
 
 /**
  * This class is similar to the extensively documented {@link SLAddNode}.
@@ -57,14 +62,26 @@ import com.oracle.truffle.sl.runtime.SLBigNumber;
 public abstract class SLSubNode extends SLBinaryNode {
 
     @Specialization(rewriteOn = ArithmeticException.class)
-    public static long subLong(long left, long right) {
+    public static long doLong(long left, long right) {
         return Math.subtractExact(left, right);
     }
 
-    @Specialization(replaces = "subLong")
+    @Specialization(replaces = "doLong")
     @TruffleBoundary
-    public static SLBigNumber sub(SLBigNumber left, SLBigNumber right) {
-        return new SLBigNumber(left.getValue().subtract(right.getValue()));
+    public static SLBigInteger doSLBigInteger(SLBigInteger left, SLBigInteger right) {
+        return new SLBigInteger(left.getValue().subtract(right.getValue()));
+    }
+
+    @Specialization(replaces = "doSLBigInteger", guards = {"leftLibrary.fitsInBigInteger(left)", "rightLibrary.fitsInBigInteger(right)"}, limit = "3")
+    @TruffleBoundary
+    public static SLBigInteger doInteropBigInteger(Object left, Object right,
+                    @CachedLibrary("left") InteropLibrary leftLibrary,
+                    @CachedLibrary("right") InteropLibrary rightLibrary) {
+        try {
+            return new SLBigInteger(leftLibrary.asBigInteger(left).subtract(rightLibrary.asBigInteger(right)));
+        } catch (UnsupportedMessageException e) {
+            throw shouldNotReachHere(e);
+        }
     }
 
     @Fallback

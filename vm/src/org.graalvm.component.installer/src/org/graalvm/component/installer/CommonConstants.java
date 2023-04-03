@@ -36,6 +36,7 @@ public class CommonConstants {
     public static final String CAP_GRAALVM_VERSION = "graalvm_version";
     public static final String CAP_OS_ARCH = "os_arch";
     public static final String CAP_OS_NAME = "os_name";
+    public static final String CAP_OS_VARIANT = "os_variant";
     public static final String CAP_EDITION = "edition";
     public static final String CAP_JAVA_VERSION = "java_version";
 
@@ -185,4 +186,5 @@ public class CommonConstants {
     public static final String JSON_KEY_COMPONENT_REQUIRES = "requires"; // NOI18N
     public static final String JSON_KEY_COMPONENT_ERRORS = "errors"; // NOI18N
     public static final String JSON_KEY_COMPONENT_PROBLEMS = "problems"; // NOI18N
+    public static final String JSON_KEY_COMPONENT_LIC_IMPL_ACCEPT = "isLicenseImplicitlyAccepted"; // NOI18N
 }

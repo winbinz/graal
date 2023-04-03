@@ -119,7 +119,8 @@ class WindowsSubstrateSegfaultHandler extends SubstrateSegfaultHandler {
             } else {
                 log.string(", ExceptionInformation=").zhex(operation);
             }
-            log.string(" ").zhex(exInfo.addressOf(1).read());
+            log.string(" ");
+            printSegfaultAddressInfo(log, exInfo.addressOf(1).read());
         } else {
             if (numParameters > 0) {
                 log.string(", ExceptionInformation=");
@@ -131,7 +132,7 @@ class WindowsSubstrateSegfaultHandler extends SubstrateSegfaultHandler {
         }
     }
 
-    @Uninterruptible(reason = "Called from uninterruptible code.")
+    @Uninterruptible(reason = "Called from uninterruptible code.", mayBeInlined = true)
     @RestrictHeapAccess(access = NO_ALLOCATION, reason = "Must not allocate in segfault handler.")
     private static RuntimeException shouldNotReachHere() {
         throw VMError.shouldNotReachHere();

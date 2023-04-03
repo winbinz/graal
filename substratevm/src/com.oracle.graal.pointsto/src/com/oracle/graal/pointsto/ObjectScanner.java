@@ -51,6 +51,7 @@ import com.oracle.graal.pointsto.util.CompletionExecutor;
 import jdk.vm.ci.code.BytecodePosition;
 import jdk.vm.ci.meta.JavaConstant;
 import jdk.vm.ci.meta.JavaKind;
+import jdk.vm.ci.meta.ResolvedJavaField;
 import jdk.vm.ci.meta.ResolvedJavaMethod;
 
 /**
@@ -204,7 +205,7 @@ public class ObjectScanner {
             if (!arrayType.getComponentType().isPrimitive()) {
                 ImageHeapArray heapArray = (ImageHeapArray) array;
                 for (int idx = 0; idx < heapArray.getLength(); idx++) {
-                    final JavaConstant element = heapArray.getElement(idx);
+                    final JavaConstant element = (JavaConstant) heapArray.getElement(idx);
                     if (element.isNull()) {
                         scanningObserver.forNullArrayElement(array, arrayType, idx, reason);
                     } else {
@@ -416,13 +417,14 @@ public class ObjectScanner {
 
             if (type.isInstanceClass()) {
                 /* Scan constant's instance fields. */
-                for (AnalysisField field : type.getInstanceFields(true)) {
+                for (ResolvedJavaField javaField : type.getInstanceFields(true)) {
+                    AnalysisField field = (AnalysisField) javaField;
                     if (field.getJavaKind() == JavaKind.Object && field.isRead()) {
                         assert !Modifier.isStatic(field.getModifiers());
                         scanField(field, entry.constant, entry.reason);
                     }
                 }
-            } else if (type.isArray() && bb.getProviders().getWordTypes().asKind(type.getComponentType()) == JavaKind.Object) {
+            } else if (type.isArray() && bb.getWordTypes().asKind(type.getComponentType()) == JavaKind.Object) {
                 /* Scan the array elements. */
                 scanArray(entry.constant, entry.reason);
             }
@@ -497,7 +499,7 @@ public class ObjectScanner {
 
         final String reason;
 
-        protected OtherReason(String reason) {
+        public OtherReason(String reason) {
             super(null, null);
             this.reason = reason;
         }
@@ -512,7 +514,6 @@ public class ObjectScanner {
         final AnalysisField field;
 
         private static ScanReason previous(AnalysisField field) {
-            assert field.isStatic() && field.isRead();
             Object readBy = field.getReadBy();
             if (readBy instanceof BytecodePosition) {
                 ResolvedJavaMethod readingMethod = ((BytecodePosition) readBy).getMethod();
@@ -643,7 +644,7 @@ public class ObjectScanner {
      * Furthermore it also serializes on the object put until the method release is called with this
      * object. So each object goes through two states:
      * <li>In flight: counter = sequence - 1
-     * <li>Commited: counter = sequence
+     * <li>Committed: counter = sequence
      *
      * If the object is in state in flight, all other calls with this object to putAndAcquire will
      * block until release with the object is called.

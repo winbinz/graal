@@ -56,7 +56,7 @@ import com.oracle.truffle.api.operation.serialization.SerializationUtils;
 import com.oracle.truffle.api.source.Source;
 import com.oracle.truffle.api.strings.TruffleString;
 import com.oracle.truffle.sl.SLLanguage;
-import com.oracle.truffle.sl.runtime.SLBigNumber;
+import com.oracle.truffle.sl.runtime.SLBigInteger;
 import com.oracle.truffle.sl.runtime.SLNull;
 
 public final class SLOperationSerialization {
@@ -89,8 +89,8 @@ public final class SLOperationSerialization {
                 buffer.writeLong((long) object);
             } else if (object instanceof Boolean) {
                 buffer.writeByte(((boolean) object) ? CODE_BOOLEAN_TRUE : CODE_BOOLEAN_FALSE);
-            } else if (object instanceof SLBigNumber) {
-                SLBigNumber num = (SLBigNumber) object;
+            } else if (object instanceof SLBigInteger) {
+                SLBigInteger num = (SLBigInteger) object;
                 buffer.writeByte(CODE_BIG_INT);
                 writeByteArray(buffer, num.getValue().toByteArray());
             } else if (object instanceof Source) {
@@ -137,7 +137,7 @@ public final class SLOperationSerialization {
                 case CODE_BOOLEAN_FALSE:
                     return Boolean.FALSE;
                 case CODE_BIG_INT:
-                    return new SLBigNumber(new BigInteger(readByteArray(buffer)));
+                    return new SLBigInteger(new BigInteger(readByteArray(buffer)));
                 case CODE_SOURCE: {
                     String name = new String(readByteArray(buffer));
                     return Source.newBuilder(SLLanguage.ID, "", name).build();

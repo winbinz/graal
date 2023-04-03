@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -148,6 +148,7 @@ import com.oracle.truffle.dsl.processor.model.NodeFieldData;
 import com.oracle.truffle.dsl.processor.model.Parameter;
 import com.oracle.truffle.dsl.processor.model.ParameterSpec;
 import com.oracle.truffle.dsl.processor.model.SpecializationData;
+import com.oracle.truffle.dsl.processor.model.SpecializationData.Idempotence;
 import com.oracle.truffle.dsl.processor.model.SpecializationThrowsData;
 import com.oracle.truffle.dsl.processor.model.TemplateMethod;
 import com.oracle.truffle.dsl.processor.model.TypeSystemData;
@@ -427,6 +428,8 @@ public final class NodeParser extends AbstractParser<NodeData> {
         initializeAOT(node);
         boolean recommendInline = initializeInlinable(resolver, node);
 
+        initializeFastPathIdempotentGuards(node);
+
         if (mode == ParseMode.DEFAULT || mode == ParseMode.OPERATION) {
             boolean emitWarnings = TruffleProcessorOptions.cacheSharingWarningsEnabled(processingEnv) && //
                             !TruffleProcessorOptions.generateSlowPathOnly(processingEnv);
@@ -449,6 +452,45 @@ public final class NodeParser extends AbstractParser<NodeData> {
         verifyRecommendationWarnings(node, recommendInline);
 
         return node;
+    }
+
+    private void initializeFastPathIdempotentGuards(NodeData node) {
+        for (SpecializationData specialization : node.getReachableSpecializations()) {
+            for (GuardExpression guard : specialization.getGuards()) {
+                DSLExpression expression = guard.getExpression();
+
+                if (guard.isWeakReferenceGuard() || FlatNodeGenFactory.guardNeedsNodeStateBit(specialization, guard)) {
+                    guard.setFastPathIdempotent(false);
+                    continue;
+                }
+
+                Idempotence idempotence = specialization.getIdempotence(expression);
+                switch (idempotence) {
+                    case IDEMPOTENT:
+                        guard.setFastPathIdempotent(true);
+                        break;
+                    case NON_IDEMPOTENT:
+                        guard.setFastPathIdempotent(false);
+                        break;
+                    case UNKNOWN:
+                        StringBuilder message = new StringBuilder(String.format("The guard '%s' invokes methods that would benefit from the @%s or @%s annotations: %n",
+                                        guard.getExpression().asString(), getSimpleName(types.Idempotent), getSimpleName(types.NonIdempotent)));
+                        for (ExecutableElement method : specialization.getBoundMethods(expression)) {
+                            if (ElementUtils.getIdempotent(method) == Idempotence.UNKNOWN) {
+                                message.append("  - ").append(ElementUtils.getReadableReference(node.getTemplateType(), method)).append(System.lineSeparator());
+                            }
+                        }
+                        message.append("The DSL will invoke guards always or only in the slow-path during specialization depending these annotations. ");
+                        message.append("To resolve this annotate the methods, remove the guard or suppress the warning.");
+                        specialization.addSuppressableWarning(TruffleSuppressedWarnings.GUARD, message.toString());
+                        guard.setFastPathIdempotent(true);
+                        break;
+                    default:
+                        throw new AssertionError();
+
+                }
+            }
+        }
     }
 
     private DSLExpressionResolver createBaseResolver(NodeData node, List<Element> members) {
@@ -648,7 +690,7 @@ public final class NodeParser extends AbstractParser<NodeData> {
                                 getSimpleName(types.Specialization));
             }
 
-            boolean isLayoutBenefittingFromNeverDefault = isLayoutBenefittingFromNeverDefault(specialization);
+            boolean isLayoutBenefittingFromNeverDefault = FlatNodeGenFactory.isLayoutBenefittingFromNeverDefault(specialization);
             for (CacheExpression cache : specialization.getCaches()) {
                 if (cache.isAlwaysInitialized()) {
                     // no space needed
@@ -700,10 +742,6 @@ public final class NodeParser extends AbstractParser<NodeData> {
             }
 
         }
-    }
-
-    private static boolean isLayoutBenefittingFromNeverDefault(SpecializationData specialization) {
-        return !specialization.hasMultipleInstances() && !FlatNodeGenFactory.shouldUseSpecializationClassBySize(specialization);
     }
 
     private static TypeMirror findRedirectedInliningType(SpecializationData specialization, CacheExpression cache) {
@@ -874,23 +912,7 @@ public final class NodeParser extends AbstractParser<NodeData> {
                 }
                 AnnotationValue inlineValue = getAnnotationValue(cache.getMessageAnnotation(), "inline", false);
                 Boolean inline = getAnnotationValue(Boolean.class, cache.getMessageAnnotation(), "inline", false);
-                if (cache.getInlinedNode() == null) {
-                    if (inline == null) {
-                        inline = node.shouldInlineByDefault();
-                    }
-                    if (inline && !isInliningSupported(cache)) {
-                        if (emitErrors) {
-                            cache.addError("Failed to generate code for @%s: Cached type '%s' does not support inlining. " + //
-                                            "Only inlinable types are supported for nodes annotated with @%s. " + //
-                                            "Inlinable types declare a static inline method or use the @%s annotation. " + //
-                                            "The primitive types boolean, byte, short, int are also considered inlinable.",
-                                            getSimpleName(types.GenerateInline),
-                                            getSimpleName(cache.getParameter().getType()),
-                                            getSimpleName(types.GenerateInline),
-                                            getSimpleName(types.GenerateInline));
-                        }
-                    }
-                } else if (inline != null && inline) {
+                if (cache.getInlinedNode() != null && inline != null && inline) {
                     if (emitErrors) {
                         cache.addSuppressableWarning(TruffleSuppressedWarnings.UNUSED, inlineValue, "Redundant specification of @%s(... inline=true). " + //
                                         "Cached values of nodes with @%s are implicitely inlined.",
@@ -1525,6 +1547,22 @@ public final class NodeParser extends AbstractParser<NodeData> {
             }
 
         }
+
+        for (SpecializationData specialization : specializations) {
+            if (!specialization.getAssumptionExpressions().isEmpty() && specialization.isReachesFallback()) {
+                specialization.addSuppressableWarning(TruffleSuppressedWarnings.ASSUMPTION,
+                                """
+                                                It is discouraged to use assumptions with a specialization that reaches a @%s specialization.\s\
+                                                Specialization instances get removed if assumptions are no longer valid, which may lead to unexpected @%s invocations.\s\
+                                                This may be fixed by translating the assumption usage to a regular method guard instead.\s\
+                                                Instead of assumptions="a" you may use guards="a.isValid()".\s\
+                                                This problem may also be fixed by adding a new more generic specialization that replaces this specialization.\s\
+                                                """,
+                                getSimpleName(types.Fallback),
+                                getSimpleName(types.Fallback));
+            }
+        }
+
     }
 
     private static void initializeExecutableTypeHierarchy(NodeData node) {
@@ -3471,14 +3509,39 @@ public final class NodeParser extends AbstractParser<NodeData> {
         AnnotationMirror cachedAnnotation = cache.getMessageAnnotation();
         final NodeData node = specialization.getNode();
         Boolean inline = getAnnotationValue(Boolean.class, cachedAnnotation, "inline", false);
-        boolean hasInline = hasInlineMethod(cache);
-        boolean requireCached = node.isGenerateCached() || !hasInline || (inline != null && !inline);
+        boolean declaresInline = inline != null;
+        boolean hasInlineMethod = hasInlineMethod(cache);
+        boolean requireCached = node.isGenerateCached() || !hasInlineMethod || (inline != null && !inline);
+
         if (inline == null) {
             if (forceInlineByDefault(cache)) {
                 inline = true;
             } else {
                 inline = node.shouldInlineByDefault();
             }
+        }
+
+        if (inline && !hasInlineMethod && ElementUtils.isAssignable(cache.getParameter().getType(), types.Node)) {
+            if (declaresInline) {
+                cache.addError(cachedAnnotation, getAnnotationValue(cachedAnnotation, "inline"),
+                                "The cached node type does not support object inlining." + //
+                                                " Add @%s on the node type or disable inline using @%s(inline=false) to resolve this.",
+                                getSimpleName(types.GenerateInline),
+                                getSimpleName(types.Cached));
+            } else if (node.isGenerateInline()) {
+                cache.addSuppressableWarning(TruffleSuppressedWarnings.INLINING_RECOMMENDATION,
+                                "The cached node type does not support object inlining." + //
+                                                " Add @%s on the node type or disable inline using @%s(inline=false) to resolve this.",
+                                getSimpleName(types.GenerateInline),
+                                getSimpleName(types.Cached));
+                inline = false;
+            } else {
+                inline = false;
+            }
+        }
+
+        if (cache.hasErrors()) {
+            return;
         }
 
         boolean requireUncached = node.isGenerateUncached() || mode == ParseMode.EXPORTED_MESSAGE;
@@ -3509,7 +3572,7 @@ public final class NodeParser extends AbstractParser<NodeData> {
         }
 
         AnnotationValue adopt = getAnnotationValue(cachedAnnotation, "adopt", false);
-        if (inline && hasInline) {
+        if (inline && hasInlineMethod) {
             ExecutableElement inlineMethod = lookupInlineMethod(originalResolver, node, cache, cache.getParameter().getType(), cache);
             List<InlineFieldData> fields;
             if (inlineMethod != null) {
@@ -3588,14 +3651,6 @@ public final class NodeParser extends AbstractParser<NodeData> {
         }
         cache.setAdopt(getAnnotationValue(Boolean.class, cachedAnnotation, "adopt", true));
 
-        if (inline != null && inline && !hasInline && ElementUtils.isAssignable(cache.getParameter().getType(), types.Node)) {
-            cache.addError(cachedAnnotation, getAnnotationValue(cachedAnnotation, "inline"),
-                            "The cached node type does not support object inlining." + //
-                                            " Add @%s on the node type or disable inline using @%s(inline=false) to resolve this.",
-                            getSimpleName(types.GenerateInline),
-                            getSimpleName(types.Cached));
-        }
-
         Boolean neverDefault = getAnnotationValue(Boolean.class, cachedAnnotation, "neverDefault", false);
         cache.setNeverDefaultGuaranteed(isNeverDefaultGuaranteed(specialization, cache));
         if (neverDefault != null) {
@@ -3653,17 +3708,6 @@ public final class NodeParser extends AbstractParser<NodeData> {
                 if (ElementUtils.findAnnotationMirror(executable, types.NeverDefault) != null) {
                     return true;
                 }
-
-                Element enclosing = executable.getEnclosingElement();
-                if (enclosing != null) {
-                    if (typeEquals(enclosing.asType(), types.DirectCallNode)) {
-                        // cannot use NeverDefault annotation in certain TruffleTypes
-                        return executable.getSimpleName().toString().equals("create");
-                    } else if (typeEquals(enclosing.asType(), types.IndirectCallNode)) {
-                        // cannot use NeverDefault annotation in certain TruffleTypes
-                        return executable.getSimpleName().toString().equals("create");
-                    }
-                }
             }
             VariableElement var = cache.getDefaultExpression().resolveVariable();
             if (var != null) {
@@ -3677,17 +3721,18 @@ public final class NodeParser extends AbstractParser<NodeData> {
     }
 
     private static boolean isNeverDefaultGuaranteed(SpecializationData specialization, CacheExpression cache) {
-        if (cache.getDefaultExpression() == null) {
+        DSLExpression expression = cache.getDefaultExpression();
+        if (expression == null) {
             return false;
         }
 
-        TypeMirror type = cache.getDefaultExpression().getResolvedType();
+        TypeMirror type = expression.getResolvedType();
         if (type != null && ElementUtils.isPrimitive(type) && !ElementUtils.isPrimitive(cache.getParameter().getType())) {
             // An assignment of a primitive to its boxed type is never null.
             return true;
         }
 
-        Object constant = cache.getDefaultExpression().resolveConstant();
+        Object constant = expression.resolveConstant();
         if (constant != null) {
             if (constant instanceof Number) {
                 long value = ((Number) constant).longValue();
@@ -3705,7 +3750,7 @@ public final class NodeParser extends AbstractParser<NodeData> {
             }
         }
 
-        ExecutableElement method = cache.getDefaultExpression().resolveExecutable();
+        ExecutableElement method = expression.resolveExecutable();
         if (method != null && method.getKind() == ElementKind.CONSTRUCTOR) {
             // Constructors never return null.
             return true;
@@ -3716,32 +3761,20 @@ public final class NodeParser extends AbstractParser<NodeData> {
          */
         ProcessorContext context = ProcessorContext.getInstance();
         TruffleTypes types = context.getTypes();
-        if (method != null) {
-            TypeMirror enlcosingType = method.getEnclosingElement().asType();
-            String simpleName = method.getSimpleName().toString();
-            if (ElementUtils.typeEquals(context.getType(Object.class), enlcosingType) &&
-                            (simpleName.equals("getClass") || simpleName.equals("toString"))) {
-                return true;
-            }
-
-            if ((ElementUtils.typeEquals(types.Frame, enlcosingType) || ElementUtils.typeEquals(types.VirtualFrame, enlcosingType) ||
-                            ElementUtils.typeEquals(types.MaterializedFrame, enlcosingType)) && //
-                            (simpleName.equals("getDescriptor") || //
-                                            simpleName.equals("getArguments") || //
-                                            simpleName.equals("materialize"))) {
-                return true;
-            }
-            if ((ElementUtils.typeEquals(types.FrameDescriptor, enlcosingType)) && //
-                            (simpleName.equals("getSlotKind") || //
-                                            simpleName.equals("getAuxiliarySlots"))) {
-                return true;
-            }
+        if (method != null && types.isBuiltinNeverDefault(method)) {
+            return true;
         }
 
-        VariableElement var = cache.getDefaultExpression().resolveVariable();
-        if (var != null && var.getSimpleName().toString().equals("this")) {
-            // this pointer for libraries never null
-            return true;
+        VariableElement var = expression.resolveVariable();
+        if (var != null) {
+            if (var.getSimpleName().toString().equals("this")) {
+                // this pointer for libraries never null
+                return true;
+            }
+
+            if (types.isBuiltinNeverDefault(var)) {
+                return true;
+            }
         }
 
         /*
@@ -3873,7 +3906,7 @@ public final class NodeParser extends AbstractParser<NodeData> {
      * on. This enables that @Cached InlinedBranchProfile inlines by default even if a cached
      * version is generated and no warning is printed.
      */
-    private static boolean forceInlineByDefault(CacheExpression cache) {
+    private boolean forceInlineByDefault(CacheExpression cache) {
         AnnotationMirror cacheAnnotation = cache.getMessageAnnotation();
         TypeElement parameterType = ElementUtils.castTypeElement(cache.getParameter().getType());
         if (parameterType == null) {
@@ -3882,6 +3915,13 @@ public final class NodeParser extends AbstractParser<NodeData> {
         boolean defaultCached = getAnnotationValue(cacheAnnotation, "value", false) == null;
         if (defaultCached && !hasDefaultCreateCacheMethod(parameterType.asType())) {
             return hasInlineMethod(cache);
+        }
+        if (ElementUtils.isAssignable(parameterType.asType(), types.Node)) {
+            AnnotationMirror inlineAnnotation = getGenerateInlineAnnotation(parameterType);
+            if (inlineAnnotation != null) {
+                return getAnnotationValue(Boolean.class, inlineAnnotation, "value") &&
+                                getAnnotationValue(Boolean.class, inlineAnnotation, "inlineByDefault");
+            }
         }
         return false;
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -57,8 +57,10 @@ import com.oracle.truffle.api.Assumption;
 import com.oracle.truffle.api.Truffle;
 import com.oracle.truffle.api.dsl.Bind;
 import com.oracle.truffle.api.dsl.Cached;
+import com.oracle.truffle.api.dsl.Cached.Exclusive;
 import com.oracle.truffle.api.dsl.Cached.Shared;
 import com.oracle.truffle.api.dsl.ExecuteTracingSupport;
+import com.oracle.truffle.api.dsl.Fallback;
 import com.oracle.truffle.api.dsl.GenerateCached;
 import com.oracle.truffle.api.dsl.GenerateInline;
 import com.oracle.truffle.api.dsl.GeneratePackagePrivate;
@@ -79,6 +81,7 @@ import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.CustomInline2No
 import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.ErrorRuntimeUsageNodeGen;
 import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.InlineReplaceNodeGen;
 import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.InlineRewriteOnNodeGen;
+import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.InlinedByDefaultCachedNodeGen;
 import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.InlinedUsageNodeGen;
 import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.MultiInstanceInlineWithGenericNodeGen;
 import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.MultiInstanceInliningNodeGen;
@@ -86,6 +89,8 @@ import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.MultiInstanceMi
 import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.PassNodeAndFrameNodeGen;
 import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.ReplaceNodeGen;
 import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.RewriteOnNodeGen;
+import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.SharedAndNonSharedInlinedMultipleInstances1NodeGen;
+import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.SharedAndNonSharedInlinedMultipleInstances2NodeGen;
 import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.SharedProfileInSpecializationClassNodeGen;
 import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.SpecializationClassAndInlinedNodeGen;
 import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.Use128BitsNodeGen;
@@ -97,9 +102,17 @@ import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.UseBindInInline
 import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.UseCustomInlineNodeGen;
 import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.UseDoNotInlineInlinableNodeNodeGen;
 import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.UseFailEarlyNodeGen;
+import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.UseInheritedInlinedByDefaultInCachedNodeGen;
 import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.UseInlineInlineCacheNodeGen;
 import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.UseInlineSharedWithSpecializationClassNodeGen;
 import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.UseInlinedAdoptNodeGen;
+import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.UseInlinedByDefaultAndForceCachedVersionNodeGen;
+import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.UseInlinedByDefaultAndForceInlineVersionNodeGen;
+import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.UseInlinedByDefaultInCachedNodeGen;
+import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.UseInlinedByDefaultInCachedWithAlwaysInlineCachedAndGenerateInlineNodeGen;
+import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.UseInlinedByDefaultInCachedWithAlwaysInlineCachedAndGenerateInlineUserNodeGen;
+import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.UseInlinedByDefaultInCachedWithAlwaysInlineCachedNodeGen;
+import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.UseInlinedByDefaultInInlineOnlyUserNodeGen;
 import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.UseInlinedNodeInGuardNodeGen;
 import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.UseIntrospectionNodeGen;
 import com.oracle.truffle.api.dsl.test.GenerateInlineTestFactory.UseMixedAndInlinedNodeGen;
@@ -1589,6 +1602,113 @@ public class GenerateInlineTest extends AbstractPolyglotTest {
         assertEquals("s0", node.execute(1));
     }
 
+    @GenerateUncached
+    @GenerateInline
+    @GenerateCached(false)
+    @SuppressWarnings("unused")
+    public abstract static class InlinedIdentityNode extends Node {
+
+        abstract boolean execute(Node node, Object arg0);
+
+        @Specialization(guards = "arg0 == cachedArg0", limit = "1")
+        static boolean s0(Node node, Object arg0,
+                        @Cached("arg0") Object cachedArg0) {
+            return true;
+        }
+
+        @Fallback
+        static boolean fallback(Object obj) {
+            return false;
+        }
+    }
+
+    @Test
+    public void testSharedAndNonSharedInlinedMultipleInstances1Node() {
+        SharedAndNonSharedInlinedMultipleInstances1Node node = SharedAndNonSharedInlinedMultipleInstances1NodeGen.create();
+        Object o1 = 1;
+        Object o2 = 2;
+
+        assertEquals("s0", node.execute(o1));
+        assertEquals("s1", node.execute(o2));
+
+        assertEquals("s0", node.execute(o1));
+        assertEquals("s1", node.execute(o2));
+    }
+
+    @SuppressWarnings("truffle-inlining")
+    abstract static class SharedAndNonSharedInlinedMultipleInstances1Node extends Node {
+
+        public abstract Object execute(Object arg0);
+
+        @Specialization(guards = "sharedNode.execute(this, arg0)", limit = "3")
+        @SuppressWarnings("unused")
+        static String s0(Object arg0,
+                        @Bind("this") Node inliningTarget,
+                        @Shared @Cached InlinedIdentityNode sharedNode,
+                        @Cached InlinedIdentityNode exclusiveNode) {
+            assertTrue(sharedNode.execute(inliningTarget, arg0));
+            assertTrue(exclusiveNode.execute(inliningTarget, arg0));
+            return "s0";
+        }
+
+        @Specialization
+        String s1(Object arg0,
+                        @Bind("this") Node inliningTarget,
+                        @Shared @Cached InlinedIdentityNode sharedNode,
+                        @Exclusive @Cached InlinedIdentityNode exclusiveNode) {
+            assertFalse(sharedNode.execute(inliningTarget, arg0));
+            assertTrue(exclusiveNode.execute(inliningTarget, arg0));
+            return "s1";
+        }
+
+    }
+
+    @Test
+    public void testSharedAndNonSharedInlinedMultipleInstances2Node() {
+        SharedAndNonSharedInlinedMultipleInstances2Node node = SharedAndNonSharedInlinedMultipleInstances2NodeGen.create();
+        Object o1 = 1;
+        Object o2 = 2;
+        Object o3 = 3;
+        Object o4 = 4;
+
+        assertEquals("s0", node.execute(o1));
+        assertEquals("s0", node.execute(o2));
+        assertEquals("s0", node.execute(o3));
+        assertEquals("s1", node.execute(o4));
+
+        assertEquals("s0", node.execute(o1));
+        assertEquals("s0", node.execute(o2));
+        assertEquals("s0", node.execute(o3));
+        assertEquals("s1", node.execute(o4));
+    }
+
+    @SuppressWarnings("truffle-inlining")
+    abstract static class SharedAndNonSharedInlinedMultipleInstances2Node extends Node {
+
+        public abstract Object execute(Object arg0);
+
+        @Specialization(guards = "exclusiveNode.execute(this, arg0)", limit = "3")
+        @SuppressWarnings("unused")
+        static String s0(Object arg0,
+                        @Bind("this") Node inliningTarget,
+                        @Shared @Cached InlinedIdentityNode sharedNode,
+                        @Cached InlinedIdentityNode exclusiveNode) {
+            assertTrue(exclusiveNode.execute(inliningTarget, arg0));
+            return "s0";
+        }
+
+        @Specialization
+        String s1(Object arg0,
+                        @Bind("this") Node inliningTarget,
+                        @Shared @Cached InlinedIdentityNode sharedNode,
+                        @Exclusive @Cached InlinedIdentityNode exclusiveNode) {
+            assertTrue(sharedNode.execute(inliningTarget, arg0));
+            assertTrue(exclusiveNode.execute(inliningTarget, arg0));
+            return "s1";
+        }
+
+    }
+
     enum EnumValue {
 
         S0,
@@ -2262,4 +2382,260 @@ public class GenerateInlineTest extends AbstractPolyglotTest {
 
     }
 
+    // caller Cached + Callee Inlinable, but not inlined -> Warning
+    @GenerateInline(false)
+    public abstract static class CachedWarningTest1 extends Node {
+
+        public abstract Object execute(Object object);
+
+        @Specialization
+        @SuppressWarnings("unused")
+        static String s0(int value,
+                        @ExpectError("The cached type 'SingleBitNode' supports object-inlining.%") //
+                        @Cached SingleBitNode inlinedNnode) {
+            return "s0";
+        }
+
+    }
+
+    // caller Cached + Callee Inlinable, alwaysInlineCached -> Auto-inline
+    @GenerateInline(false)
+    @GenerateCached(alwaysInlineCached = true)
+    public abstract static class CachedWarningTest2 extends Node {
+
+        public abstract Object execute(Object object);
+
+        @Specialization
+        @SuppressWarnings("unused")
+        static String s0(int value,
+                        @Cached SingleBitNode inlinedNnode) {
+            return "s0";
+        }
+
+    }
+
+    // caller Cached + Callee Not Inlinable , alwaysInlineCached -> do nothing
+    @GenerateInline(false)
+    @GenerateCached(alwaysInlineCached = true)
+    public abstract static class CachedWarningTest3 extends Node {
+
+        public abstract Object execute(Object object);
+
+        @Specialization
+        @SuppressWarnings("unused")
+        static String s0(int value,
+                        @Cached CachedWarningTest1 inlinedNnode) {
+            return "s0";
+        }
+
+    }
+
+    // caller Inlined + Callee Not Inlinable -> Warnings
+    @GenerateInline(true)
+    public abstract static class InlinedWarningTest1 extends Node {
+
+        public abstract Object execute(Node node, Object object);
+
+        @Specialization
+        @SuppressWarnings("unused")
+        static String s0(int value,
+                        @ExpectError("The cached node type does not support object inlining.%") //
+                        @Cached CachedWarningTest1 inlinedNnode) {
+            return "s0";
+        }
+
+    }
+
+    // caller Inlined + Callee Not Inlinable + inline=false -> No warning
+    @GenerateInline(true)
+    public abstract static class InlinedWarningTest2 extends Node {
+
+        public abstract Object execute(Node node, Object object);
+
+        @Specialization
+        @SuppressWarnings("unused")
+        static String s0(int value,
+                        @Cached(inline = false) CachedWarningTest1 inlinedNnode) {
+            return "s0";
+        }
+
+    }
+
+    // caller Inlined + Callee Inlinable -> Auto Inline
+    @GenerateInline(true)
+    public abstract static class InlinedWarningTest3 extends Node {
+
+        public abstract Object execute(Node node, Object object);
+
+        @Specialization
+        @SuppressWarnings("unused")
+        static String s0(Node node, int value,
+                        @Cached SingleBitNode inlinedNnode) {
+            return "s0";
+        }
+
+    }
+
+    @GenerateCached(inherit = true)
+    @GenerateInline(inlineByDefault = true, inherit = true)
+    public abstract static class InlinedByDefaultCachedNode extends Node {
+        abstract String execute(Node n, Object arg);
+
+        @Specialization
+        String doInt(@SuppressWarnings("unused") int i) {
+            return "int";
+        }
+
+        @Specialization
+        String doDouble(@SuppressWarnings("unused") double i) {
+            return "double";
+        }
+    }
+
+    public abstract static class UseInlinedByDefaultInlineUser extends UseInlinedByDefaultUser {
+        abstract String execute(Node inliningTarget, Object arg, boolean useCorrectNode);
+
+        @Override
+        final String execute(Object arg, boolean useCorrectNode) {
+            // Shortcut for when the node is not inlined, but invalid operation if the node is
+            // inlined!
+            return execute(null, arg, useCorrectNode);
+        }
+    }
+
+    public abstract static class UseInlinedByDefaultUser extends Node {
+        abstract String execute(Object arg, boolean useCorrectNode);
+    }
+
+    @GenerateCached
+    @GenerateInline(false)
+    public abstract static class UseInlinedByDefaultInCached extends UseInlinedByDefaultUser {
+        @Specialization
+        String doInt(Object arg, boolean useCorrectNode,
+                        @Cached InlinedByDefaultCachedNode node) {
+            return node.execute(useCorrectNode ? this : node, arg);
+        }
+    }
+
+    @GenerateCached(alwaysInlineCached = true)
+    @GenerateInline(false)
+    public abstract static class UseInlinedByDefaultInCachedWithAlwaysInlineCached extends UseInlinedByDefaultUser {
+        @Specialization
+        String doInt(Object arg, boolean useCorrectNode,
+                        @Cached InlinedByDefaultCachedNode node) {
+            return node.execute(useCorrectNode ? this : node, arg);
+        }
+    }
+
+    @GenerateInline
+    @GenerateCached(alwaysInlineCached = true)
+    public abstract static class UseInlinedByDefaultInCachedWithAlwaysInlineCachedAndGenerateInline extends UseInlinedByDefaultInlineUser {
+        @Specialization
+        static String doInt(Node inlineTarget, Object arg, boolean useCorrectNode,
+                        @Cached InlinedByDefaultCachedNode node) {
+            return node.execute(useCorrectNode ? inlineTarget : node, arg);
+        }
+    }
+
+    @GenerateInline(false)
+    public abstract static class UseInlinedByDefaultInCachedWithAlwaysInlineCachedAndGenerateInlineUser extends UseInlinedByDefaultUser {
+        @Specialization
+        String doInt(Object arg, boolean useCorrectNode,
+                        @Cached(inline = true) UseInlinedByDefaultInCachedWithAlwaysInlineCachedAndGenerateInline node) {
+            return node.execute(this, arg, useCorrectNode);
+        }
+    }
+
+    @GenerateInline
+    @GenerateCached(false)
+    public abstract static class UseInlinedByDefaultInInlineOnly extends UseInlinedByDefaultInlineUser {
+        @Specialization
+        static String doInt(Node inlineTarget, Object arg, boolean useCorrectNode,
+                        @Cached InlinedByDefaultCachedNode node) {
+            return node.execute(useCorrectNode ? inlineTarget : node, arg);
+        }
+    }
+
+    @GenerateInline(false)
+    public abstract static class UseInlinedByDefaultInInlineOnlyUser extends UseInlinedByDefaultUser {
+        @Specialization
+        String doInt(Object arg, boolean useCorrectNode,
+                        @Cached UseInlinedByDefaultInInlineOnly node) {
+            return node.execute(this, arg, useCorrectNode);
+        }
+    }
+
+    @GenerateInline(false)
+    public abstract static class UseInlinedByDefaultAndForceInlineVersion extends UseInlinedByDefaultUser {
+        @Specialization
+        String doInt(Object arg, boolean useCorrectNode,
+                        @SuppressWarnings("truffle-unused") // forcing inline is redundant
+                        @Cached(inline = true) InlinedByDefaultCachedNode node) {
+            return node.execute(useCorrectNode ? this : node, arg);
+        }
+    }
+
+    @GenerateInline(false)
+    public abstract static class UseInlinedByDefaultAndForceCachedVersion extends Node {
+        abstract String execute(Object arg);
+
+        @Specialization
+        String doInt(Object arg,
+                        @Cached(inline = false) InlinedByDefaultCachedNode node) {
+            // If 'node' were wrongly inlined, this would have to fail,
+            // because it does not get any inlining target argument
+            return node.execute(null, arg);
+        }
+    }
+
+    public abstract static class InheritedInlinedByDefaultCachedNode extends InlinedByDefaultCachedNode {
+        @Specialization
+        String doString(@SuppressWarnings("unused") String s) {
+            return "string";
+        }
+    }
+
+    @GenerateCached
+    @GenerateInline(false)
+    public abstract static class UseInheritedInlinedByDefaultInCached extends UseInlinedByDefaultUser {
+        @Specialization
+        String doInt(Object arg, boolean useCorrectNode,
+                        @Cached InheritedInlinedByDefaultCachedNode node) {
+            return node.execute(useCorrectNode ? this : node, arg);
+        }
+    }
+
+    @Test
+    public void testInlineByDefaultInCached() {
+        testInlineByDefaultCachedUser(UseInlinedByDefaultInCachedNodeGen.create());
+        testInlineByDefaultCachedUser(UseInlinedByDefaultInCachedWithAlwaysInlineCachedNodeGen.create());
+        testInlineByDefaultCachedUser(UseInlinedByDefaultInCachedWithAlwaysInlineCachedAndGenerateInlineNodeGen.create());
+        testInlineByDefaultCachedUser(UseInlinedByDefaultAndForceInlineVersionNodeGen.create());
+        testInlineByDefaultCachedUser(UseInheritedInlinedByDefaultInCachedNodeGen.create());
+        // inline users are tested through another cached entry point:
+        testInlineByDefaultCachedUser(UseInlinedByDefaultInCachedWithAlwaysInlineCachedAndGenerateInlineUserNodeGen.create());
+        testInlineByDefaultCachedUser(UseInlinedByDefaultInInlineOnlyUserNodeGen.create());
+
+        var forceCached = UseInlinedByDefaultAndForceCachedVersionNodeGen.create();
+        assertEquals("int", forceCached.execute(42));
+        assertEquals("double", forceCached.execute(3.14));
+
+        var manuallyCreatedCachedVersion = InlinedByDefaultCachedNodeGen.create();
+        assertEquals("int", manuallyCreatedCachedVersion.execute(null, 42));
+        assertEquals("double", manuallyCreatedCachedVersion.execute(null, 3.14));
+    }
+
+    private static void testInlineByDefaultCachedUser(UseInlinedByDefaultUser userNode) {
+        String testCaseName = userNode.getClass().getSimpleName();
+        assertEquals(testCaseName, "int", userNode.execute(42, true));
+        assertEquals(testCaseName, "double", userNode.execute(3.14, true));
+        boolean thrown = false;
+        try {
+            userNode.execute(1, false);
+        } catch (ClassCastException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("Invalid parameter type passed to updater"));
+            thrown = true;
+        }
+        assertTrue(String.format("Node %s did not throw when it used wrong inlineTarget. Is the UseInlinedByDefault really inlined?", testCaseName), thrown);
+    }
 }

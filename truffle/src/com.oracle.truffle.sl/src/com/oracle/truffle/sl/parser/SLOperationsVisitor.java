@@ -88,7 +88,7 @@ import com.oracle.truffle.sl.parser.SimpleLanguageOperationsParser.StatementCont
 import com.oracle.truffle.sl.parser.SimpleLanguageOperationsParser.StringLiteralContext;
 import com.oracle.truffle.sl.parser.SimpleLanguageOperationsParser.TermContext;
 import com.oracle.truffle.sl.parser.SimpleLanguageOperationsParser.While_statementContext;
-import com.oracle.truffle.sl.runtime.SLBigNumber;
+import com.oracle.truffle.sl.runtime.SLBigInteger;
 import com.oracle.truffle.sl.runtime.SLNull;
 
 /**
@@ -670,7 +670,7 @@ public final class SLOperationsVisitor extends SLBaseVisitor {
         try {
             value = Long.parseLong(ctx.NUMERIC_LITERAL().getText());
         } catch (NumberFormatException ex) {
-            value = new SLBigNumber(new BigInteger(ctx.NUMERIC_LITERAL().getText()));
+            value = new SLBigInteger(new BigInteger(ctx.NUMERIC_LITERAL().getText()));
         }
         b.emitLoadConstant(value);
         return null;

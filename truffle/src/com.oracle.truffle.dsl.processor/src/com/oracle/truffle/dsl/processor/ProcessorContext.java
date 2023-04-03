@@ -75,8 +75,21 @@ public class ProcessorContext implements AutoCloseable {
 
     public ProcessorContext(ProcessingEnvironment env) {
         this.environment = env;
-        boolean emitWarnings = !Boolean.parseBoolean(System.getProperty("truffle.dsl.ignoreCompilerWarnings", "false")) || TruffleProcessorOptions.suppressAllWarnings(env);
-        this.log = new Log(environment, emitWarnings);
+        boolean emitWarnings = !Boolean.parseBoolean(System.getProperty("truffle.dsl.ignoreCompilerWarnings", "false")) && !TruffleProcessorOptions.suppressAllWarnings(env);
+
+        String[] suppressWarnings = null;
+        if (emitWarnings) {
+            suppressWarnings = TruffleProcessorOptions.suppressDSLWarnings(env);
+            if (suppressWarnings != null) {
+                for (String warning : suppressWarnings) {
+                    if (!TruffleSuppressedWarnings.ALL_KEYS.contains(warning)) {
+                        throw new IllegalArgumentException(String.format("Invalid truffle.dsl.SuppressWarnings key '%s' specified.", warning));
+                    }
+                }
+            }
+        }
+
+        this.log = new Log(environment, emitWarnings, suppressWarnings);
         this.timingsEnabled = TruffleProcessorOptions.printTimings(env);
     }
 
@@ -228,13 +241,20 @@ public class ProcessorContext implements AutoCloseable {
             throw new IllegalStateException("context already entered");
         }
         instance.set(context);
-        if (context != null && context.types == null) {
-            try {
-                context.types = new TruffleTypes();
-            } catch (IllegalArgumentException e) {
-                TruffleProcessor.handleThrowable(null, e, null);
-                throw e;
+        try {
+            if (context != null && context.types == null) {
+                try {
+                    context.types = new TruffleTypes();
+                } catch (IllegalArgumentException e) {
+                    TruffleProcessor.handleThrowable(null, e, null);
+                    throw e;
+                }
             }
+        } catch (Throwable t) {
+            // make sure we do not set the instance if type init fails
+            // otherwise the next enter will fail
+            instance.set(null);
+            throw t;
         }
         return context;
     }

@@ -104,6 +104,10 @@ public class SubstrateUtil {
         return Services.IS_IN_NATIVE_IMAGE;
     }
 
+    public static boolean isRunningInCI() {
+        return System.console() == null || System.getenv("CI") != null;
+    }
+
     /**
      * Pattern for a single shell command argument that does not need to be quoted.
      */
@@ -208,6 +212,7 @@ public class SubstrateUtil {
      * are actually the same class.
      */
     @SuppressWarnings({"unused", "unchecked"})
+    @AlwaysInline("Some callers rely on this never becoming an actual method call.")
     @Uninterruptible(reason = "Called from uninterruptible code.", mayBeInlined = true)
     public static <T> T cast(Object obj, Class<T> toType) {
         return (T) obj;
@@ -276,7 +281,7 @@ public class SubstrateUtil {
      * Convenience method that unwraps the method details and delegates to the currently registered
      * UniqueShortNameProvider image singleton with the significant exception that it always passes
      * null for the class loader.
-     * 
+     *
      * @param m a method whose unique short name is required
      * @return a unique short name for the method
      */
@@ -287,7 +292,7 @@ public class SubstrateUtil {
     /**
      * Delegate to the corresponding method of the currently registered UniqueShortNameProvider
      * image singleton.
-     * 
+     *
      * @param loader the class loader for the method's owning class
      * @param declaringClass the method's declaring class
      * @param methodName the method's name
@@ -302,7 +307,7 @@ public class SubstrateUtil {
     /**
      * Delegate to the corresponding method of the currently registered UniqueShortNameProvider
      * image singleton.
-     * 
+     *
      * @param m a member whose unique short name is required
      * @return a unique short name for the member
      */

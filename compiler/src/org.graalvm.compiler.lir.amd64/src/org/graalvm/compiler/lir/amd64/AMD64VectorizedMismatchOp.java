@@ -63,9 +63,9 @@ import jdk.vm.ci.meta.Value;
  */
 // @formatter:off
 @StubPort(path      = "src/hotspot/cpu/x86/macroAssembler_x86.cpp",
-          lineStart = 6559,
-          lineEnd   = 6777,
-          commit    = "2afb4c3327b6830a009ee1ab8a1eb7803ef53007",
+          lineStart = 6603,
+          lineEnd   = 6821,
+          commit    = "b1d89f30663aed28783e839c5690f46a2b382002",
           sha1      = "128d88224b8fc7fa9283072966a28c14fdc1eda5")
 // @formatter:on
 @Opcode("VECTORIZED_MISMATCH")

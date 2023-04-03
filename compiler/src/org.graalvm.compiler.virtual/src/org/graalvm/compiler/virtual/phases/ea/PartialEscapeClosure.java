@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -90,8 +90,6 @@ public abstract class PartialEscapeClosure<BlockT extends PartialEscapeBlockStat
     public static final CounterKey COUNTER_MATERIALIZATIONS_PHI = DebugContext.counter("MaterializationsPhi");
     public static final CounterKey COUNTER_MATERIALIZATIONS_MERGE = DebugContext.counter("MaterializationsMerge");
     public static final CounterKey COUNTER_MATERIALIZATIONS_UNHANDLED = DebugContext.counter("MaterializationsUnhandled");
-    public static final CounterKey COUNTER_MATERIALIZATIONS_LOOP_REITERATION = DebugContext.counter("MaterializationsLoopReiteration");
-    public static final CounterKey COUNTER_MATERIALIZATIONS_LOOP_END = DebugContext.counter("MaterializationsLoopEnd");
     public static final CounterKey COUNTER_MATERIALIZATIONS_LOOP_EXIT = DebugContext.counter("MaterializationsLoopExit");
     public static final CounterKey COUNTER_ALLOCATION_REMOVED = DebugContext.counter("AllocationsRemoved");
     public static final CounterKey COUNTER_MEMORYCHECKPOINT = DebugContext.counter("MemoryCheckpoint");
@@ -187,6 +185,7 @@ public abstract class PartialEscapeClosure<BlockT extends PartialEscapeBlockStat
         }
     }
 
+    @SuppressWarnings("this-escape")
     public PartialEscapeClosure(ScheduleResult schedule, CoreProviders providers) {
         super(schedule, schedule.getCFG());
         StructuredGraph graph = schedule.getCFG().graph;
@@ -309,7 +308,7 @@ public abstract class PartialEscapeClosure<BlockT extends PartialEscapeBlockStat
                 return virtualizationResult;
 
             default:
-                throw GraalError.shouldNotReachHere("Unknown effects closure mode " + currentMode);
+                throw GraalError.shouldNotReachHere("Unknown effects closure mode " + currentMode); // ExcludeFromJacocoGeneratedReport
         }
         return virtualize(node, tool);
     }
@@ -1198,7 +1197,8 @@ public abstract class PartialEscapeClosure<BlockT extends PartialEscapeBlockStat
                                     if (!state.isVirtual()) {
                                         break;
                                     }
-                                    setPhiInput(phi, i2, state.getEntry(i));
+                                    ValueNode entry = state.getEntry(i);
+                                    setPhiInput(phi, i2, entry);
                                 }
                             }
                         }

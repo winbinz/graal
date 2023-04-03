@@ -64,13 +64,11 @@ import org.graalvm.compiler.serviceprovider.JavaVersionUtil;
 import com.oracle.graal.pointsto.constraints.UnsupportedFeatureException;
 import com.oracle.graal.pointsto.infrastructure.OriginalClassProvider;
 import com.oracle.graal.pointsto.meta.HostedProviders;
-import com.oracle.graal.pointsto.util.GraalAccess;
 import com.oracle.svm.core.SubstrateAnnotationInvocationHandler;
 import com.oracle.svm.core.feature.AutomaticallyRegisteredFeature;
 import com.oracle.svm.core.feature.InternalFeature;
 import com.oracle.svm.core.graal.jdk.SubstrateObjectCloneWithExceptionNode;
 import com.oracle.svm.core.jdk.AnnotationSupportConfig;
-import com.oracle.svm.core.meta.SubstrateObjectConstant;
 import com.oracle.svm.core.util.VMError;
 import com.oracle.svm.hosted.analysis.NativeImagePointsToAnalysis;
 import com.oracle.svm.hosted.phases.HostedGraphKit;
@@ -140,6 +138,7 @@ public class AnnotationSupport extends CustomSubstitution<AnnotationSubstitution
      */
     private final ResolvedJavaType constantAnnotationMarkerSubstitutionType;
 
+    @SuppressWarnings("this-escape")
     public AnnotationSupport(MetaAccessProvider metaAccess, SnippetReflectionProvider snippetReflection) {
         super(metaAccess);
         this.snippetReflection = snippetReflection;
@@ -275,7 +274,7 @@ public class AnnotationSupport extends CustomSubstitution<AnnotationSubstitution
 
         @Override
         public StructuredGraph buildGraph(DebugContext debug, ResolvedJavaMethod method, HostedProviders providers, Purpose purpose) {
-            HostedGraphKit kit = new HostedGraphKit(debug, providers, method);
+            HostedGraphKit kit = new HostedGraphKit(debug, providers, method, purpose);
             StructuredGraph graph = kit.getGraph();
             graph.addAfterFixed(graph.start(), graph.add(new DeoptimizeNode(DeoptimizationAction.None, DeoptimizationReason.UnreachedCode)));
             return graph;
@@ -298,7 +297,7 @@ public class AnnotationSupport extends CustomSubstitution<AnnotationSubstitution
             ResolvedJavaType annotationType = method.getDeclaringClass();
             assert !Modifier.isStatic(method.getModifiers()) && method.getSignature().getParameterCount(false) == 0;
 
-            HostedGraphKit kit = new HostedGraphKit(debug, providers, method);
+            HostedGraphKit kit = new HostedGraphKit(debug, providers, method, purpose);
             StructuredGraph graph = kit.getGraph();
             FrameStateBuilder state = new FrameStateBuilder(null, method, graph);
             state.initializeForMethodStart(null, true, providers.getGraphBuilderPlugins());
@@ -357,7 +356,7 @@ public class AnnotationSupport extends CustomSubstitution<AnnotationSubstitution
             ResolvedJavaType annotationInterfaceType = findAnnotationInterfaceType(annotationType);
             JavaConstant returnValue = providers.getConstantReflection().asJavaClass(annotationInterfaceType);
 
-            HostedGraphKit kit = new HostedGraphKit(debug, providers, method);
+            HostedGraphKit kit = new HostedGraphKit(debug, providers, method, purpose);
             ValueNode returnConstant = kit.unique(ConstantNode.forConstant(returnValue, providers.getMetaAccess()));
             kit.append(new ReturnNode(returnConstant));
 
@@ -376,7 +375,7 @@ public class AnnotationSupport extends CustomSubstitution<AnnotationSubstitution
             ResolvedJavaType annotationType = method.getDeclaringClass();
             ResolvedJavaType annotationInterfaceType = findAnnotationInterfaceType(annotationType);
 
-            HostedGraphKit kit = new HostedGraphKit(debug, providers, method);
+            HostedGraphKit kit = new HostedGraphKit(debug, providers, method, purpose);
             StructuredGraph graph = kit.getGraph();
             FrameStateBuilder state = new FrameStateBuilder(null, method, graph);
             state.initializeForMethodStart(null, true, providers.getGraphBuilderPlugins());
@@ -475,7 +474,7 @@ public class AnnotationSupport extends CustomSubstitution<AnnotationSubstitution
             assert !Modifier.isStatic(method.getModifiers()) && method.getSignature().getParameterCount(false) == 0;
             ResolvedJavaType annotationType = method.getDeclaringClass();
 
-            HostedGraphKit kit = new HostedGraphKit(debug, providers, method);
+            HostedGraphKit kit = new HostedGraphKit(debug, providers, method, purpose);
             StructuredGraph graph = kit.getGraph();
             FrameStateBuilder state = new FrameStateBuilder(null, method, graph);
             state.initializeForMethodStart(null, true, providers.getGraphBuilderPlugins());
@@ -581,7 +580,7 @@ public class AnnotationSupport extends CustomSubstitution<AnnotationSubstitution
             ResolvedJavaType annotationType = method.getDeclaringClass();
             ResolvedJavaType annotationInterfaceType = findAnnotationInterfaceType(annotationType);
 
-            HostedGraphKit kit = new HostedGraphKit(debug, providers, method);
+            HostedGraphKit kit = new HostedGraphKit(debug, providers, method, purpose);
             StructuredGraph graph = kit.getGraph();
 
             FrameStateBuilder state = new FrameStateBuilder(null, method, graph);
@@ -598,14 +597,14 @@ public class AnnotationSupport extends CustomSubstitution<AnnotationSubstitution
             } else {
                 returnValue = "@" + annotationInterfaceType.toJavaName(true);
             }
-            ValueNode returnConstant = kit.unique(ConstantNode.forConstant(SubstrateObjectConstant.forObject(returnValue), providers.getMetaAccess()));
+            ValueNode returnConstant = kit.unique(ConstantNode.forConstant(providers.getSnippetReflection().forObject(returnValue), providers.getMetaAccess()));
             kit.append(new ReturnNode(returnConstant));
 
             return kit.finalizeGraph();
         }
 
         private static Class<?> getJavaClass(ResolvedJavaType type) {
-            return OriginalClassProvider.getJavaClass(GraalAccess.getOriginalSnippetReflection(), type);
+            return OriginalClassProvider.getJavaClass(type);
         }
     }
 

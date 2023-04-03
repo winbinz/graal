@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,10 +25,15 @@
 package com.oracle.svm.core.jfr;
 
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
+import org.graalvm.compiler.api.replacements.Fold;
+import org.graalvm.nativeimage.Platform;
+import org.graalvm.nativeimage.Platforms;
 import org.graalvm.nativeimage.ProcessProperties;
 
 import com.oracle.svm.core.Containers;
+import com.oracle.svm.core.Uninterruptible;
 import com.oracle.svm.core.annotate.Alias;
 import com.oracle.svm.core.annotate.RecomputeFieldValue;
 import com.oracle.svm.core.annotate.Substitute;
@@ -37,11 +42,11 @@ import com.oracle.svm.core.annotate.TargetElement;
 import com.oracle.svm.core.jdk.JDK11OrEarlier;
 import com.oracle.svm.core.jdk.JDK17OrEarlier;
 import com.oracle.svm.core.jdk.JDK17OrLater;
-import com.oracle.svm.core.jdk.JDK19OrEarlier;
 import com.oracle.svm.core.jdk.JDK19OrLater;
 import com.oracle.svm.core.jdk.JDK20OrLater;
 import com.oracle.svm.core.jfr.traceid.JfrTraceId;
 import com.oracle.svm.core.util.VMError;
+import com.oracle.svm.util.ReflectionUtil;
 
 import jdk.jfr.Event;
 import jdk.jfr.internal.JVM;
@@ -51,17 +56,21 @@ import jdk.jfr.internal.LogTag;
 @TargetClass(value = jdk.jfr.internal.JVM.class, onlyWith = HasJfrSupport.class)
 public final class Target_jdk_jfr_internal_JVM {
     // Checkstyle: stop
-    @Alias @TargetElement(onlyWith = JDK20OrLater.class) //
+    @Alias //
+    @TargetElement(onlyWith = HasChunkRotationMonitorField.class) //
     static Object CHUNK_ROTATION_MONITOR;
 
-    @Alias @TargetElement(onlyWith = JDK19OrEarlier.class) //
+    @Alias //
+    @TargetElement(onlyWith = HasFileDeltaChangeField.class) //
     static Object FILE_DELTA_CHANGE;
     // Checkstyle: resume
 
-    @Alias @RecomputeFieldValue(kind = RecomputeFieldValue.Kind.Reset) //
+    @Alias //
+    @RecomputeFieldValue(kind = RecomputeFieldValue.Kind.Reset) //
     private volatile boolean nativeOK;
 
-    @Alias @RecomputeFieldValue(kind = RecomputeFieldValue.Kind.Reset) //
+    @Alias //
+    @RecomputeFieldValue(kind = RecomputeFieldValue.Kind.Reset) //
     @TargetElement(onlyWith = JDK11OrEarlier.class) //
     private volatile boolean recording;
 
@@ -70,10 +79,30 @@ public final class Target_jdk_jfr_internal_JVM {
     private static void registerNatives() {
     }
 
+    @Substitute
+    @TargetElement(onlyWith = JDK17OrLater.class) //
+    public void markChunkFinal() {
+        SubstrateJVM.get().markChunkFinal();
+    }
+
     /** See {@link JVM#beginRecording}. */
     @Substitute
     public void beginRecording() {
         SubstrateJVM.get().beginRecording();
+    }
+
+    /** See {@link JVM#isRecording}. */
+    @Substitute
+    @Uninterruptible(reason = "Needed for calling SubstrateJVM.isRecording().")
+    @TargetElement(onlyWith = JDK17OrLater.class)
+    public boolean isRecording() {
+        return SubstrateJVM.get().isRecording();
+    }
+
+    /** See {@link JVM#endRecording}. */
+    @Substitute
+    public void endRecording() {
+        SubstrateJVM.get().endRecording();
     }
 
     /** See {@link JVM#counterTime}. */
@@ -88,23 +117,18 @@ public final class Target_jdk_jfr_internal_JVM {
         return false;
     }
 
-    /** See {@link JVM#endRecording}. */
-    @Substitute
-    public void endRecording() {
-        SubstrateJVM.get().endRecording();
-    }
-
-    /** See {@link JVM#isRecording}. */
+    /** See {@link JVM#getAllEventClasses}. */
     @Substitute
     @TargetElement(onlyWith = JDK17OrLater.class)
-    public boolean isRecording() {
-        return SubstrateJVM.get().unsafeIsRecording();
+    public List<Class<? extends jdk.internal.event.Event>> getAllEventClasses() {
+        return JfrJavaEvents.getAllEventClasses();
     }
 
     /** See {@link JVM#getAllEventClasses}. */
     @Substitute
-    public List<Class<? extends Event>> getAllEventClasses() {
-        return JfrJavaEvents.getAllEventClasses();
+    @TargetElement(name = "getAllEventClasses", onlyWith = JDK11OrEarlier.class)
+    public List<Class<? extends Event>> getAllEventClassesJDK11() {
+        return JfrJavaEvents.getJfrEventClasses();
     }
 
     /** See {@link JVM#getUnloadedEventClassCount}. */
@@ -115,7 +139,12 @@ public final class Target_jdk_jfr_internal_JVM {
 
     /** See {@link JVM#getClassId}. Intrinsified on HotSpot. */
     @Substitute
+    @Uninterruptible(reason = "Needed for SubstrateJVM.getClassId().")
     public static long getClassId(Class<?> clazz) {
+        /*
+         * The result is only valid until the epoch changes but this is fine because EventWriter
+         * instances are invalidated when the epoch changes.
+         */
         return SubstrateJVM.get().getClassId(clazz);
     }
 
@@ -135,7 +164,12 @@ public final class Target_jdk_jfr_internal_JVM {
 
     /** See {@link JVM#getStackTraceId}. */
     @Substitute
+    @Uninterruptible(reason = "Needed for SubstrateJVM.getStackTraceId().")
     public long getStackTraceId(int skipCount) {
+        /*
+         * The result is only valid until the epoch changes but this is fine because EventWriter
+         * instances are invalidated when the epoch changes.
+         */
         return SubstrateJVM.get().getStackTraceId(skipCount);
     }
 
@@ -155,6 +189,12 @@ public final class Target_jdk_jfr_internal_JVM {
     @Substitute
     public static void log(int tagSetId, int level, String message) {
         SubstrateJVM.get().log(tagSetId, level, message);
+    }
+
+    /** See {@link JVM#logEvent}. */
+    @Substitute
+    public static void logEvent(int level, String[] lines, boolean system) {
+        SubstrateJVM.get().logEvent(level, lines, system);
     }
 
     /** See {@link JVM#subscribeLogLevel}. */
@@ -296,13 +336,6 @@ public final class Target_jdk_jfr_internal_JVM {
         return 1;
     }
 
-    /** See {@link SubstrateJVM#getChunkStartNanos}. */
-    @Substitute
-    @TargetElement(onlyWith = JDK17OrLater.class)
-    public long getChunkStartNanos() {
-        return SubstrateJVM.get().getChunkStartNanos();
-    }
-
     @Substitute
     @TargetElement(onlyWith = {JDK17OrLater.class, JDK17OrEarlier.class})
     public boolean setHandler(Class<? extends jdk.internal.event.Event> eventClass, Target_jdk_jfr_internal_handlers_EventHandler handler) {
@@ -318,7 +351,7 @@ public final class Target_jdk_jfr_internal_JVM {
         return SubstrateJVM.getHandler(eventClass);
     }
 
-    /** See {@link JVM#getTypeId}. */
+    /** See {@link JVM#getTypeId(Class)}. */
     @Substitute
     public long getTypeId(Class<?> clazz) {
         return JfrTraceId.getTraceId(clazz);
@@ -340,6 +373,12 @@ public final class Target_jdk_jfr_internal_JVM {
     @Substitute
     public static boolean flush(Target_jdk_jfr_internal_EventWriter writer, int uncommittedSize, int requestedSize) {
         return SubstrateJVM.get().flush(writer, uncommittedSize, requestedSize);
+    }
+
+    @Substitute
+    @TargetElement(onlyWith = JDK17OrLater.class) //
+    public void flush() {
+        SubstrateJVM.get().flush();
     }
 
     /** See {@link JVM#setRepositoryLocation}. */
@@ -366,6 +405,12 @@ public final class Target_jdk_jfr_internal_JVM {
     @Substitute
     public void abort(String errorMsg) {
         SubstrateJVM.get().abort(errorMsg);
+    }
+
+    /** See {@link JVM#addStringConstant}. */
+    @Substitute
+    public static boolean addStringConstant(long id, String s) {
+        return false;
     }
 
     /** See {@link JVM#uncaughtException}. */
@@ -408,30 +453,22 @@ public final class Target_jdk_jfr_internal_JVM {
         return SubstrateJVM.get().shouldRotateDisk();
     }
 
-    /** See {@link JVM#flush}. */
-    @Substitute
-    @TargetElement(onlyWith = JDK17OrLater.class) //
-    public void flush() {
-        // Temporarily do nothing. This is used for JFR streaming.
-    }
-
     @Substitute
     @TargetElement(onlyWith = JDK17OrLater.class) //
     public void include(Thread thread) {
-        // Temporarily do nothing. This is used for JFR streaming.
+        SubstrateJVM.get().setExcluded(thread, false);
     }
 
     @Substitute
     @TargetElement(onlyWith = JDK17OrLater.class) //
     public void exclude(Thread thread) {
-        // Temporarily do nothing. This is used for JFR streaming.
+        SubstrateJVM.get().setExcluded(thread, true);
     }
 
     @Substitute
     @TargetElement(onlyWith = JDK17OrLater.class) //
     public boolean isExcluded(Thread thread) {
-        // Temporarily do nothing. This is used for JFR streaming.
-        return false;
+        return SubstrateJVM.get().isExcluded(thread);
     }
 
     @Substitute
@@ -439,6 +476,20 @@ public final class Target_jdk_jfr_internal_JVM {
     public boolean isExcluded(Class<? extends jdk.internal.event.Event> eventClass) {
         // Temporarily always include.
         return false;
+    }
+
+    @Substitute
+    @TargetElement(onlyWith = JDK19OrLater.class) //
+    public boolean isInstrumented(Class<? extends jdk.internal.event.Event> eventClass) {
+        // This should check for blessed commit methods in the event class [GR-41200]
+        return true;
+    }
+
+    /** See {@link SubstrateJVM#getChunkStartNanos}. */
+    @Substitute
+    @TargetElement(onlyWith = JDK17OrLater.class)
+    public long getChunkStartNanos() {
+        return SubstrateJVM.get().getChunkStartNanos();
     }
 
     @Substitute
@@ -453,11 +504,11 @@ public final class Target_jdk_jfr_internal_JVM {
         return SubstrateJVM.get().getConfiguration(eventClass);
     }
 
+    /** See {@link JVM#getTypeId(String)}. */
     @Substitute
-    @TargetElement(onlyWith = JDK19OrLater.class) //
-    public boolean isInstrumented(Class<? extends jdk.internal.event.Event> eventClass) {
-        // This should check for blessed commit methods in the event class [GR-41200]
-        return true;
+    public long getTypeId(String name) {
+        /* Not implemented at the moment. */
+        return -1;
     }
 
     @Substitute
@@ -467,8 +518,33 @@ public final class Target_jdk_jfr_internal_JVM {
     }
 
     @Substitute
-    @TargetElement(onlyWith = JDK17OrLater.class) //
-    public void markChunkFinal() {
-        // Temporarily do nothing. This is used for JFR streaming.
+    @TargetElement(onlyWith = JDK20OrLater.class) //
+    public long hostTotalMemory() {
+        /* Not implemented at the moment. */
+        return 0;
+    }
+}
+
+class HasChunkRotationMonitorField implements BooleanSupplier {
+    private static final boolean HAS_FIELD = ReflectionUtil.lookupField(true, JVM.class, "CHUNK_ROTATION_MONITOR") != null;
+
+    @Override
+    public boolean getAsBoolean() {
+        return HAS_FIELD;
+    }
+
+    @Fold
+    public static boolean get() {
+        return HAS_FIELD;
+    }
+}
+
+@Platforms(Platform.HOSTED_ONLY.class)
+class HasFileDeltaChangeField implements BooleanSupplier {
+    private static final boolean HAS_FIELD = ReflectionUtil.lookupField(true, JVM.class, "FILE_DELTA_CHANGE") != null;
+
+    @Override
+    public boolean getAsBoolean() {
+        return HAS_FIELD;
     }
 }

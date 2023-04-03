@@ -38,6 +38,7 @@ import jdk.vm.ci.meta.MetaAccessProvider;
 
 public class AnalysisMetaAccess extends UniverseMetaAccess {
 
+    @SuppressWarnings("this-escape")
     public AnalysisMetaAccess(AnalysisUniverse analysisUniverse, MetaAccessProvider originalMetaAccess) {
         super(analysisUniverse, originalMetaAccess);
 
@@ -50,6 +51,17 @@ public class AnalysisMetaAccess extends UniverseMetaAccess {
     @Override
     public AnalysisType lookupJavaType(Class<?> clazz) {
         return (AnalysisType) super.lookupJavaType(clazz);
+    }
+
+    @Override
+    public AnalysisType[] lookupJavaTypes(Class<?>[] classes) {
+        AnalysisType[] result = new AnalysisType[classes.length];
+
+        for (int i = 0; i < result.length; ++i) {
+            result[i] = this.lookupJavaType(classes[i]);
+        }
+
+        return result;
     }
 
     public Optional<AnalysisType> optionalLookupJavaType(Class<?> clazz) {

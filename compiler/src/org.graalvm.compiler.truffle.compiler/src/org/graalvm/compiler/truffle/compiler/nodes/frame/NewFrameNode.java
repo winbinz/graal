@@ -117,6 +117,8 @@ public final class NewFrameNode extends FixedWithNextNode implements IterableNod
 
     private final SpeculationReason intrinsifyAccessorsSpeculation;
 
+    private boolean isBytecodeOSRTransferTarget = false;
+
     public static byte asStackTag(byte tag) {
         switch (tag) {
             case FrameSlotKindBooleanTag:
@@ -375,7 +377,7 @@ public final class NewFrameNode extends FixedWithNextNode implements IterableNod
             case Auxiliary:
                 return null;
             default:
-                throw GraalError.shouldNotReachHere();
+                throw GraalError.shouldNotReachHere(); // ExcludeFromJacocoGeneratedReport
         }
     }
 
@@ -390,7 +392,7 @@ public final class NewFrameNode extends FixedWithNextNode implements IterableNod
             case Auxiliary:
                 return virtualFrameArrays.get(AUXILIARY_SLOTS_ARRAY);
             default:
-                throw GraalError.shouldNotReachHere();
+                throw GraalError.shouldNotReachHere(); // ExcludeFromJacocoGeneratedReport
         }
     }
 
@@ -405,11 +407,19 @@ public final class NewFrameNode extends FixedWithNextNode implements IterableNod
             case Auxiliary:
                 return null;
             default:
-                throw GraalError.shouldNotReachHere();
+                throw GraalError.shouldNotReachHere(); // ExcludeFromJacocoGeneratedReport
         }
     }
 
     public int getIndexedFrameSize() {
         return indexedFrameSize;
+    }
+
+    public boolean isBytecodeOSRTransferTarget() {
+        return isBytecodeOSRTransferTarget;
+    }
+
+    public void setBytecodeOSRTransferTarget() {
+        isBytecodeOSRTransferTarget = true;
     }
 }

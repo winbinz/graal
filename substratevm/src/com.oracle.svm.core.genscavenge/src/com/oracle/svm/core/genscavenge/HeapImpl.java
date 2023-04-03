@@ -28,6 +28,7 @@ import java.lang.ref.Reference;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.graalvm.compiler.api.directives.GraalDirectives;
 import org.graalvm.compiler.api.replacements.Fold;
 import org.graalvm.compiler.core.common.NumUtil;
 import org.graalvm.compiler.core.common.SuppressFBWarnings;
@@ -443,6 +444,12 @@ public final class HeapImpl extends Heap {
         return 0;
     }
 
+    @Fold
+    @Override
+    public boolean allowPageSizeMismatch() {
+        return true;
+    }
+
     @Override
     public boolean walkImageHeapObjects(ObjectVisitor visitor) {
         VMOperation.guaranteeInProgressAtSafepoint("Must only be called at a safepoint");
@@ -456,6 +463,7 @@ public final class HeapImpl extends Heap {
     @Override
     public boolean walkCollectedHeapObjects(ObjectVisitor visitor) {
         VMOperation.guaranteeInProgressAtSafepoint("Must only be called at a safepoint");
+        ThreadLocalAllocation.disableAndFlushForAllThreads();
         return getYoungGeneration().walkObjects(visitor) && getOldGeneration().walkObjects(visitor);
     }
 
@@ -684,6 +692,21 @@ public final class HeapImpl extends Heap {
         if (obj != null) {
             ForcedSerialPostWriteBarrier.force(OffsetAddressNode.address(obj, 0), false);
         }
+    }
+
+    @Override
+    public long getMillisSinceLastWholeHeapExamined() {
+        return getGCImpl().getMillisSinceLastWholeHeapExamined();
+    }
+
+    @Override
+    @Uninterruptible(reason = "Ensure that no GC can move the object to another chunk.", callerMustBe = true)
+    public long getIdentityHashSalt(Object obj) {
+        if (!GraalDirectives.inIntrinsic()) {
+            assert !isInImageHeap(obj) : "Image heap objects have identity hash code fields";
+        }
+        HeapChunk.Header<?> chunk = HeapChunk.getEnclosingHeapChunk(obj);
+        return HeapChunk.getIdentityHashSalt(chunk).rawValue();
     }
 
     static Pointer getImageHeapStart() {

@@ -90,7 +90,6 @@ import com.oracle.svm.core.log.Log;
 import com.oracle.svm.core.monitor.MonitorSupport;
 import com.oracle.svm.core.nodes.CFunctionEpilogueNode;
 import com.oracle.svm.core.nodes.CFunctionPrologueNode;
-import com.oracle.svm.core.sampler.ProfilingSampler;
 import com.oracle.svm.core.stack.StackOverflowCheck;
 import com.oracle.svm.core.thread.VMThreads.StatusSupport;
 import com.oracle.svm.core.threadlocal.FastThreadLocal;
@@ -129,6 +128,10 @@ public abstract class PlatformThreads {
      * The {@linkplain JavaThreads#getThreadId thread id} of the {@link Thread#currentThread()},
      * which can be a {@linkplain Target_java_lang_Thread#vthread virtual thread} or the
      * {@linkplain #currentThread platform thread itself}.
+     *
+     * As the value of the thread local can change over the thread lifetime (see carrier threads),
+     * it should only be accessed by the owning thread (via {@link FastThreadLocalLong#get()} and
+     * {@link FastThreadLocalLong#set(long)}).
      */
     static final FastThreadLocalLong currentVThreadId = FastThreadLocalFactory.createLong("PlatformThreads.currentVThreadId").setMaxOffset(FastThreadLocal.BYTE_OFFSET);
 
@@ -307,16 +310,6 @@ public abstract class PlatformThreads {
         return getIsolateThreadUnsafe(t);
     }
 
-    /** Before detaching a thread, run any Java cleanup code. */
-    static void threadExit(IsolateThread thread) {
-        VMError.guarantee(thread.equal(CurrentIsolate.getCurrentThread()), "Cleanup must execute in detaching thread");
-
-        Thread javaThread = currentThread.get(thread);
-        if (javaThread != null) {
-            toTarget(javaThread).exit();
-        }
-    }
-
     @Uninterruptible(reason = "Only uninterruptible code may be executed after Thread.exit.")
     static void afterThreadExit(IsolateThread thread) {
         VMError.guarantee(thread.equal(CurrentIsolate.getCurrentThread()), "Cleanup must execute in detaching thread");
@@ -493,7 +486,7 @@ public abstract class PlatformThreads {
         }
     }
 
-    @Uninterruptible(reason = "Called from uninterruptible code.", mayBeInlined = true)
+    @Uninterruptible(reason = "Ensure consistency of vthread and cached vthread id.")
     private static void assignCurrent0(Thread thread) {
         VMError.guarantee(currentThread.get() == null, "overwriting existing java.lang.Thread");
         currentVThreadId.set(JavaThreads.getThreadId(thread));
@@ -530,12 +523,19 @@ public abstract class PlatformThreads {
             return true;
         }
         /* Tell all the threads that the VM is being torn down. */
-        return tearDownPlatformThreads();
+        boolean result = tearDownPlatformThreads();
+
+        // Detach last thread data
+        Thread thread = currentThread.get(CurrentIsolate.getCurrentThread());
+        if (thread != null) {
+            toTarget(thread).threadData.detach();
+        }
+        return result;
     }
 
     @Uninterruptible(reason = "Thread is detaching and holds the THREAD_MUTEX.")
     public static void detachThread(IsolateThread vmThread) {
-        VMThreads.THREAD_MUTEX.assertIsOwner("Must hold the THREAD_MUTEX.");
+        assert VMThreads.THREAD_MUTEX.isOwner(true);
 
         Thread thread = currentThread.get(vmThread);
         if (thread != null) {
@@ -698,9 +698,9 @@ public abstract class PlatformThreads {
         return !VMOperationControl.isDedicatedVMOperationThread(isolateThread);
     }
 
-    /** This method should only be used to exit the main thread. */
     @SuppressFBWarnings(value = "NN", justification = "notifyAll is necessary for Java semantics, no shared state needs to be modified beforehand")
     public static void exit(Thread thread) {
+        ThreadListenerSupport.get().afterThreadRun();
         /*
          * First call Thread.exit(). This allows waiters on the thread object to observe that a
          * daemon ThreadGroup is destroyed as well if this thread happens to be the last thread of a
@@ -794,10 +794,6 @@ public abstract class PlatformThreads {
         singleton().unattachedStartedThreads.decrementAndGet();
         singleton().beforeThreadRun(thread);
 
-        if (ImageSingletons.contains(ProfilingSampler.class)) {
-            ImageSingletons.lookup(ProfilingSampler.class).registerSampler();
-        }
-
         try {
             if (VMThreads.isTearingDown()) {
                 /*
@@ -807,11 +803,10 @@ public abstract class PlatformThreads {
                 currentThread.get().interrupt();
             }
 
+            ThreadListenerSupport.get().beforeThreadRun();
             thread.run();
         } catch (Throwable ex) {
             JavaThreads.dispatchUncaughtException(thread, ex);
-        } finally {
-            exit(thread);
         }
     }
 
@@ -871,38 +866,45 @@ public abstract class PlatformThreads {
         return vmOp.result.toArray(new Thread[0]);
     }
 
-    /** Interruptibly park the current thread. */
-    static void parkCurrentPlatformOrCarrierThread() {
-        parkCurrentPlatformOrCarrierThread(false, 0);
-    }
-
-    /** Interruptibly park the current thread, indefinitely or with a timeout. */
+    /**
+     * Block the calling thread from being scheduled until another thread calls {@link #unpark},
+     * <ul>
+     * <li>{@code !isAbsolute && time == 0}: indefinitely.</li>
+     * <li>{@code !isAbsolute && time > 0}: until {@code time} nanoseconds elapse.</li>
+     * <li>{@code isAbsolute && time > 0}: until a deadline of {@code time} milliseconds from the
+     * Epoch passes (see {@link System#currentTimeMillis()}.</li>
+     * <li>otherwise: return instantly without parking.</li>
+     * </ul>
+     * May also return spuriously instead (for no apparent reason).
+     */
     static void parkCurrentPlatformOrCarrierThread(boolean isAbsolute, long time) {
         VMOperationControl.guaranteeOkayToBlock("[PlatformThreads.parkCurrentPlatformOrCarrierThread: Should not park when it is not okay to block.]");
 
-        if (time < 0 || (isAbsolute && time == 0)) {
-            return; // don't wait at all
+        /* Try to consume a pending unpark. */
+        Parker parker = getCurrentThreadData().ensureUnsafeParker();
+        if (parker.tryFastPark()) {
+            return;
         }
-        boolean timed = (time != 0);
 
         Thread thread = currentThread.get();
-        if (JavaThreads.isInterrupted(thread)) { // avoid state changes and synchronization
+        if (JavaThreads.isInterrupted(thread)) {
             return;
         }
 
-        ParkEvent parkEvent = getCurrentThreadData().ensureUnsafeParkEvent();
-        if (parkEvent.tryFastPark()) {
+        if (time < 0 || (isAbsolute && time == 0)) {
             return;
         }
+
+        boolean timed = (time != 0);
         int oldStatus = getThreadStatus(thread);
         int newStatus = MonitorSupport.singleton().getParkedThreadStatus(currentThread.get(), timed);
         setThreadStatus(thread, newStatus);
         try {
             /*
              * If another thread interrupted this thread in the meanwhile, then the call below won't
-             * block because Thread.interrupt() modifies the ParkEvent.
+             * block because Thread.interrupt() notifies the Parker.
              */
-            parkEvent.park(isAbsolute, time);
+            parker.park(isAbsolute, time);
         } finally {
             setThreadStatus(thread, oldStatus);
         }
@@ -911,7 +913,6 @@ public abstract class PlatformThreads {
     /**
      * Unpark a Thread.
      *
-     * @see #parkCurrentPlatformOrCarrierThread()
      * @see #parkCurrentPlatformOrCarrierThread(boolean, long)
      */
     static void unpark(Thread thread) {
@@ -919,7 +920,7 @@ public abstract class PlatformThreads {
         ThreadData threadData = acquireThreadData(thread);
         if (threadData != null) {
             try {
-                threadData.ensureUnsafeParkEvent().unpark();
+                threadData.ensureUnsafeParker().unpark();
             } finally {
                 threadData.release();
             }
@@ -941,7 +942,7 @@ public abstract class PlatformThreads {
     private static void sleep0(long durationNanos) {
         VMOperationControl.guaranteeOkayToBlock("[PlatformThreads.sleep(long): Should not sleep when it is not okay to block.]");
         Thread thread = currentThread.get();
-        ParkEvent sleepEvent = getCurrentThreadData().ensureSleepParkEvent();
+        Parker sleepEvent = getCurrentThreadData().ensureSleepParker();
         sleepEvent.reset();
 
         /*
@@ -949,7 +950,7 @@ public abstract class PlatformThreads {
          * wakeup in the race. This requires that updates to the event's unparked status and updates
          * to the thread's interrupt status cannot be reordered with regard to each other.
          *
-         * Another important aspect is that the thread must have a sleepParkEvent assigned to it
+         * Another important aspect is that the thread must have a sleepParker assigned to it
          * *before* the interrupted check because if not, the interrupt code will not assign one and
          * the wakeup will be lost.
          */
@@ -966,9 +967,9 @@ public abstract class PlatformThreads {
             while (remainingNanos > 0) {
                 /*
                  * If another thread interrupted this thread in the meanwhile, then the call below
-                 * won't block because Thread.interrupt() modifies the ParkEvent.
+                 * won't block because Thread.interrupt() notifies the Parker.
                  */
-                sleepEvent.condTimedWait(remainingNanos);
+                sleepEvent.park(false, remainingNanos);
                 if (JavaThreads.isInterrupted(thread)) {
                     return;
                 }
@@ -984,12 +985,12 @@ public abstract class PlatformThreads {
      *
      * @see #sleep(long)
      */
-    static void interrupt(Thread thread) {
+    static void interruptSleep(Thread thread) {
         assert !isVirtual(thread);
         ThreadData threadData = acquireThreadData(thread);
         if (threadData != null) {
             try {
-                ParkEvent sleepEvent = threadData.getSleepParkEvent();
+                Parker sleepEvent = threadData.getSleepParker();
                 if (sleepEvent != null) {
                     sleepEvent.unpark();
                 }
@@ -999,6 +1000,7 @@ public abstract class PlatformThreads {
         }
     }
 
+    @Uninterruptible(reason = "Called from uninterruptible code.", mayBeInlined = true)
     public static int getThreadStatus(Thread thread) {
         assert !isVirtual(thread);
         return (JavaVersionUtil.JAVA_SPEC >= 19) ? toTarget(thread).holder.threadStatus : toTarget(thread).threadStatus;
@@ -1193,7 +1195,8 @@ public abstract class PlatformThreads {
 
 @TargetClass(value = ThreadPoolExecutor.class, innerClass = "Worker")
 final class Target_java_util_concurrent_ThreadPoolExecutor_Worker {
-    @Alias @TargetElement(name = "this$0") //
+    @Alias //
+    @TargetElement(name = "this$0") //
     ThreadPoolExecutor executor;
 }
 

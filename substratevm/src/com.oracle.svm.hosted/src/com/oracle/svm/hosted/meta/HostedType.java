@@ -40,7 +40,7 @@ import jdk.vm.ci.meta.ResolvedJavaField;
 import jdk.vm.ci.meta.ResolvedJavaMethod;
 import jdk.vm.ci.meta.ResolvedJavaType;
 
-public abstract class HostedType implements SharedType, WrappedJavaType, OriginalClassProvider {
+public abstract class HostedType extends HostedElement implements SharedType, WrappedJavaType, OriginalClassProvider {
 
     protected final HostedUniverse universe;
     protected final AnalysisType wrapped;
@@ -189,6 +189,16 @@ public abstract class HostedType implements SharedType, WrappedJavaType, Origina
     @Override
     public final String getName() {
         return wrapped.getName();
+    }
+
+    @Override
+    public String toJavaName() {
+        return wrapped.toJavaName();
+    }
+
+    @Override
+    public String toJavaName(boolean qualified) {
+        return wrapped.toJavaName(qualified);
     }
 
     @Override
@@ -345,7 +355,7 @@ public abstract class HostedType implements SharedType, WrappedJavaType, Origina
 
     @Override
     public String toString() {
-        return "HostedType<" + toJavaName(true) + "   " + wrapped.toString() + ">";
+        return "HostedType<" + toJavaName(false) + " -> " + wrapped.toString() + ">";
     }
 
     @Override
@@ -415,6 +425,6 @@ public abstract class HostedType implements SharedType, WrappedJavaType, Origina
 
     @Override
     public Class<?> getJavaClass() {
-        return OriginalClassProvider.getJavaClass(universe.getSnippetReflection(), wrapped);
+        return wrapped.getJavaClass();
     }
 }

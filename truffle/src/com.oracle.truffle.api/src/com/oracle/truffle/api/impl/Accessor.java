@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2014, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * The Universal Permissive License (UPL), Version 1.0
@@ -77,6 +77,7 @@ import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Engine;
 import org.graalvm.polyglot.HostAccess.TargetMappingPrecedence;
 import org.graalvm.polyglot.PolyglotException;
+import org.graalvm.polyglot.SandboxPolicy;
 import org.graalvm.polyglot.Value;
 import org.graalvm.polyglot.impl.AbstractPolyglotImpl;
 import org.graalvm.polyglot.impl.AbstractPolyglotImpl.AbstractHostAccess;
@@ -167,6 +168,8 @@ public abstract class Accessor {
         public abstract RootNode cloneUninitialized(CallTarget sourceCallTarget, RootNode rootNode, RootNode uninitializedRootNode);
 
         public abstract int adoptChildrenAndCount(RootNode rootNode);
+
+        public abstract int computeSize(RootNode rootNode);
 
         public abstract Object getLanguageCache(LanguageInfo languageInfo);
 
@@ -476,9 +479,7 @@ public abstract class Accessor {
 
         public abstract Object findMetaObjectForLanguage(Object polyglotLanguageContext, Object value);
 
-        public abstract boolean isInternal(FileSystem fs);
-
-        public abstract boolean hasAllAccess(FileSystem fs);
+        public abstract boolean isInternal(Object engineObject, FileSystem fs);
 
         public abstract boolean hasNoAccess(FileSystem fs);
 
@@ -633,9 +634,10 @@ public abstract class Accessor {
 
         public abstract void resume(Object polyglotContext, Future<Void> pauseFuture);
 
-        public abstract <T, G> Iterator<T> mergeHostGuestFrames(Object instrumentEnv, StackTraceElement[] hostStack, Iterator<G> guestFrames, boolean inHostLanguage,
-                        Function<StackTraceElement, T> hostFrameConvertor,
-                        Function<G, T> guestFrameConvertor);
+        public abstract <T, G> Iterator<T> mergeHostGuestFrames(Object polyglotEngine, StackTraceElement[] hostStack, Iterator<G> guestFrames, boolean inHostLanguage,
+                        boolean includeHostFrames, Function<StackTraceElement, T> hostFrameConvertor, Function<G, T> guestFrameConvertor);
+
+        public abstract boolean isHostToGuestRootNode(RootNode root);
 
         public abstract Object createHostAdapterClass(Object polyglotLanguageContext, Object[] types, Object classOverrides);
 
@@ -655,9 +657,9 @@ public abstract class Accessor {
 
         public abstract Object getContext(Object polyglotLanguageContext);
 
-        public abstract ClassLoader getStaticObjectClassLoader(Object polyglotLanguageInstance, Class<?> referenceClass);
+        public abstract Object getStaticObjectClassLoaders(Object polyglotLanguageInstance, Class<?> referenceClass);
 
-        public abstract void setStaticObjectClassLoader(Object polyglotLanguageInstance, Class<?> referenceClass, ClassLoader cl);
+        public abstract void setStaticObjectClassLoaders(Object polyglotLanguageInstance, Class<?> referenceClass, Object value);
 
         public abstract ConcurrentHashMap<Pair<Class<?>, Class<?>>, Object> getGeneratorCache(Object polyglotLanguageInstance);
 
@@ -672,6 +674,10 @@ public abstract class Accessor {
         public abstract Object enterLanguageFromRuntime(TruffleLanguage<?> language);
 
         public abstract void leaveLanguageFromRuntime(TruffleLanguage<?> language, Object prev);
+
+        public abstract Object enterRootNodeVisit(RootNode root);
+
+        public abstract void leaveRootNodeVisit(RootNode root, Object prev);
 
         public abstract Throwable getPolyglotExceptionCause(Object polyglotExceptionImpl);
 
@@ -704,8 +710,6 @@ public abstract class Accessor {
         public abstract ThreadDeath createExitException(SourceSection sourceSection, String message, int exitCode);
 
         public abstract Throwable createInterruptExecution(SourceSection sourceSection);
-
-        public abstract Map<String, String> readOptionsFromSystemProperties(Map<String, String> options);
 
         public abstract AbstractHostLanguageService getHostService(Object polyglotEngineImpl);
 
@@ -740,6 +744,14 @@ public abstract class Accessor {
         public abstract Thread createInstrumentSystemThread(Object polyglotInstrument, Runnable runnable, ThreadGroup threadGroup);
 
         public abstract Thread createLanguageSystemThread(Object polyglotLanguageContext, Runnable runnable, ThreadGroup threadGroup);
+
+        public abstract Object getEngineFromPolyglotObject(Object polyglotObject);
+
+        public abstract SandboxPolicy getContextSandboxPolicy(Object polyglotLanguageContext);
+
+        public abstract SandboxPolicy getEngineSandboxPolicy(Object polyglotInstrument);
+
+        public abstract void ensureInstrumentCreated(Object polyglotContextImpl, String instrumentId);
     }
 
     public abstract static class LanguageSupport extends Support {
@@ -816,7 +828,7 @@ public abstract class Accessor {
 
         public abstract StackTraceElement[] getInternalStackTraceElements(Throwable t);
 
-        public abstract void materializeHostFrames(Throwable original);
+        public abstract Throwable getOrCreateLazyStackTrace(Throwable t);
 
         public abstract void configureLoggers(Object polyglotContext, Map<String, Level> logLevels, Object... loggers);
 
@@ -873,6 +885,8 @@ public abstract class Accessor {
         public abstract boolean isRecurringTLAction(ThreadLocalAction action);
 
         public abstract void performTLAction(ThreadLocalAction action, ThreadLocalAction.Access access);
+
+        public abstract OptionDescriptors createOptionDescriptorsUnion(OptionDescriptors... descriptors);
 
     }
 
@@ -1034,7 +1048,7 @@ public abstract class Accessor {
 
         public abstract boolean hasExceptionStackTrace(Object receiver);
 
-        public abstract Object getExceptionStackTrace(Object receiver);
+        public abstract Object getExceptionStackTrace(Object receiver, Object polyglotContext);
 
         public abstract boolean hasSourceLocation(Object receiver);
 
@@ -1206,9 +1220,7 @@ public abstract class Accessor {
 
         public abstract int getBaseInstanceSize(Class<?> type);
 
-        public abstract Object[] getResolvedFields(Class<?> type, boolean includePrimitive, boolean includeSuperclasses);
-
-        public abstract Object getFieldValue(Object resolvedJavaField, Object obj);
+        public abstract int[] getFieldOffsets(Class<?> type, boolean includePrimitive, boolean includeSuperclasses);
 
         public AbstractFastThreadLocal getContextThreadLocal() {
             return DefaultContextThreadLocal.SINGLETON;
@@ -1217,6 +1229,10 @@ public abstract class Accessor {
 
     public final void transferOSRFrameStaticSlot(FrameWithoutBoxing sourceFrame, FrameWithoutBoxing targetFrame, int slot) {
         sourceFrame.transferOSRStaticSlot(targetFrame, slot);
+    }
+
+    public final void startOSRFrameTransfer(FrameWithoutBoxing target) {
+        target.startOSRTransfer();
     }
 
 // A separate class to break the cycle such that Accessor can fully initialize

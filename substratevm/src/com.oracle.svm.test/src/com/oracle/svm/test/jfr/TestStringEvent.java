@@ -26,15 +26,25 @@
 
 package com.oracle.svm.test.jfr;
 
-import com.oracle.svm.test.jfr.events.StringEvent;
+import static org.junit.Assert.assertEquals;
+
+import java.util.List;
+
 import org.junit.Test;
 
-public class TestStringEvent extends JfrTest {
+import com.oracle.svm.test.jfr.events.StringEvent;
+
+import jdk.jfr.consumer.RecordedEvent;
+
+public class TestStringEvent extends JfrRecordingTest {
     @Override
     public String[] getTestedEvents() {
-        return new String[]{
-                        StringEvent.class.getName()
-        };
+        return new String[]{"com.jfr.String"};
+    }
+
+    @Override
+    protected void validateEvents(List<RecordedEvent> events) throws Throwable {
+        assertEquals(1, events.size());
     }
 
     @Test

@@ -94,8 +94,8 @@ import com.oracle.svm.core.heap.Heap;
 import com.oracle.svm.core.heap.Pod;
 import com.oracle.svm.core.hub.DynamicHub;
 import com.oracle.svm.core.hub.LayoutEncoding;
+import com.oracle.svm.core.identityhashcode.IdentityHashCodeSupport;
 import com.oracle.svm.core.meta.SharedType;
-import com.oracle.svm.core.meta.SubstrateObjectConstant;
 import com.oracle.svm.core.option.HostedOptionValues;
 import com.oracle.svm.core.snippets.SnippetRuntime;
 import com.oracle.svm.core.snippets.SnippetRuntime.SubstrateForeignCallDescriptor;
@@ -110,8 +110,9 @@ import jdk.vm.ci.meta.ResolvedJavaType;
 public class SubstrateAllocationSnippets extends AllocationSnippets {
     public static final LocationIdentity TLAB_TOP_IDENTITY = NamedLocationIdentity.mutable("TLAB.top");
     public static final LocationIdentity TLAB_END_IDENTITY = NamedLocationIdentity.mutable("TLAB.end");
-    public static final Object[] ALLOCATION_LOCATIONS = new Object[]{TLAB_TOP_IDENTITY, TLAB_END_IDENTITY, AllocationCounter.COUNT_FIELD, AllocationCounter.SIZE_FIELD};
-    public static final LocationIdentity[] TLAB_LOCATIONS = new LocationIdentity[]{TLAB_TOP_IDENTITY, TLAB_END_IDENTITY};
+    public static final Object[] ALLOCATION_LOCATIONS = new Object[]{TLAB_TOP_IDENTITY, TLAB_END_IDENTITY, IdentityHashCodeSupport.IDENTITY_HASHCODE_SALT_LOCATION,
+                    AllocationCounter.COUNT_FIELD, AllocationCounter.SIZE_FIELD};
+    public static final LocationIdentity[] GC_LOCATIONS = new LocationIdentity[]{TLAB_TOP_IDENTITY, TLAB_END_IDENTITY, IdentityHashCodeSupport.IDENTITY_HASHCODE_SALT_LOCATION};
 
     private static final SubstrateForeignCallDescriptor NEW_MULTI_ARRAY = SnippetRuntime.findForeignCall(SubstrateAllocationSnippets.class, "newMultiArrayStub", true);
     private static final SubstrateForeignCallDescriptor INSTANCE_HUB_ERROR = SnippetRuntime.findForeignCall(SubstrateAllocationSnippets.class, "instanceHubErrorStub", true);
@@ -226,7 +227,7 @@ public class SubstrateAllocationSnippets extends AllocationSnippets {
     protected Object allocateInstanceDynamicImpl(DynamicHub hub, FillContent fillContents, boolean emitMemoryBarrier, @SuppressWarnings("unused") boolean supportsBulkZeroing,
                     @SuppressWarnings("unused") boolean supportsOptimizedFilling, AllocationProfilingData profilingData) {
         // The hub was already verified by a ValidateNewInstanceClassNode.
-        UnsignedWord size = LayoutEncoding.getPureInstanceSize(hub.getLayoutEncoding());
+        UnsignedWord size = LayoutEncoding.getPureInstanceAllocationSize(hub.getLayoutEncoding());
         Object result = allocateInstanceImpl(encodeAsTLABObjectHeader(hub), size, fillContents, emitMemoryBarrier, false, profilingData);
         return piCastToSnippetReplaceeStamp(result);
     }
@@ -550,6 +551,7 @@ public class SubstrateAllocationSnippets extends AllocationSnippets {
         private final SnippetInfo allocateStoredContinuation;
         private final SnippetInfo allocatePod;
 
+        @SuppressWarnings("this-escape")
         public Templates(OptionValues options, Providers providers, SubstrateAllocationSnippets receiver) {
             super(options, providers);
             snippetCounters = new AllocationSnippetCounters(SnippetCounter.Group.NullFactory);
@@ -678,8 +680,8 @@ public class SubstrateAllocationSnippets extends AllocationSnippets {
                 SharedType type = (SharedType) node.instanceClass();
                 DynamicHub hub = ensureMarkedAsInstantiated(type.getHub());
 
-                ConstantNode hubConstant = ConstantNode.forConstant(SubstrateObjectConstant.forObject(hub), tool.getMetaAccess(), graph);
-                long size = LayoutEncoding.getPureInstanceSize(hub.getLayoutEncoding()).rawValue();
+                ConstantNode hubConstant = ConstantNode.forConstant(snippetReflection.forObject(hub), tool.getMetaAccess(), graph);
+                long size = LayoutEncoding.getPureInstanceAllocationSize(hub.getLayoutEncoding()).rawValue();
 
                 Arguments args = new Arguments(allocateInstance, graph.getGuardsStage(), tool.getLoweringStage());
                 args.add("hub", hubConstant);
@@ -709,7 +711,7 @@ public class SubstrateAllocationSnippets extends AllocationSnippets {
                 boolean fillContents = node.fillContents();
                 assert fillContents : "fillContents must be true for hybrid allocations";
 
-                ConstantNode hubConstant = ConstantNode.forConstant(SubstrateObjectConstant.forObject(hub), tool.getMetaAccess(), graph);
+                ConstantNode hubConstant = ConstantNode.forConstant(snippetReflection.forObject(hub), tool.getMetaAccess(), graph);
 
                 Arguments args = new Arguments(allocateArray, graph.getGuardsStage(), tool.getLoweringStage());
                 args.add("hub", hubConstant);
@@ -742,7 +744,7 @@ public class SubstrateAllocationSnippets extends AllocationSnippets {
                 int arrayBaseOffset = LayoutEncoding.getArrayBaseOffsetAsInt(layoutEncoding);
                 int log2ElementSize = LayoutEncoding.getArrayIndexShift(layoutEncoding);
 
-                ConstantNode hubConstant = ConstantNode.forConstant(SubstrateObjectConstant.forObject(hub), tool.getMetaAccess(), graph);
+                ConstantNode hubConstant = ConstantNode.forConstant(snippetReflection.forObject(hub), tool.getMetaAccess(), graph);
 
                 Arguments args = new Arguments(allocateStoredContinuation, graph.getGuardsStage(), tool.getLoweringStage());
                 args.add("hub", hubConstant);
@@ -771,7 +773,7 @@ public class SubstrateAllocationSnippets extends AllocationSnippets {
                 int layoutEncoding = hub.getLayoutEncoding();
                 int arrayBaseOffset = getArrayBaseOffset(layoutEncoding);
                 int log2ElementSize = LayoutEncoding.getArrayIndexShift(layoutEncoding);
-                ConstantNode hubConstant = ConstantNode.forConstant(SubstrateObjectConstant.forObject(hub), tool.getMetaAccess(), graph);
+                ConstantNode hubConstant = ConstantNode.forConstant(snippetReflection.forObject(hub), tool.getMetaAccess(), graph);
 
                 Arguments args = new Arguments(allocateArray, graph.getGuardsStage(), tool.getLoweringStage());
                 args.add("hub", hubConstant);
@@ -804,7 +806,7 @@ public class SubstrateAllocationSnippets extends AllocationSnippets {
                 }
 
                 SharedType type = (SharedType) node.type();
-                ConstantNode hubConstant = ConstantNode.forConstant(SubstrateObjectConstant.forObject(type.getHub()), tool.getMetaAccess(), graph);
+                ConstantNode hubConstant = ConstantNode.forConstant(snippetReflection.forObject(type.getHub()), tool.getMetaAccess(), graph);
 
                 Arguments args = new Arguments(newmultiarray, graph.getGuardsStage(), tool.getLoweringStage());
                 args.add("hub", hubConstant);
