@@ -1305,14 +1305,6 @@ public class FlatNodeGenFactory {
                     init.string(String.valueOf(range.offset));
                     init.string(String.valueOf(range.length));
                     init.end();
-
-                    if (specialization != null && parentAccess) {
-                        init.startGroup();
-                        init.startCall(".createParentAccessor");
-                        init.typeLiteral(createSpecializationClassReferenceType(specialization));
-                        init.end();
-                        init.end();
-                    }
                     init.end();
                 }
             } else {
@@ -1322,9 +1314,6 @@ public class FlatNodeGenFactory {
                     if (parentAccess) {
                         init.startGroup();
                         init.string("this.", inlinedFieldName);
-                        init.startCall(".createParentAccessor");
-                        init.typeLiteral(createSpecializationClassReferenceType(specialization));
-                        init.end();
                         init.end();
                     } else {
                         init.startStaticCall(field.getFieldType(), "create");
@@ -2066,6 +2055,8 @@ public class FlatNodeGenFactory {
         specializationClass = GeneratorUtils.createClass(node, null, modifiers(PRIVATE, FINAL, STATIC),
                         createSpecializationTypeName(specialization), baseType);
         specializationClass.getAnnotationMirrors().add(new CodeAnnotationMirror(types.DenyReplace));
+        specializationClass.getImplements().add(types.DSLSupport_SpecializationDataNode);
+
         specializationClasses.put(specialization, specializationClass);
 
         TypeMirror referenceType = createSpecializationClassReferenceType(specialization);
@@ -2178,8 +2169,6 @@ public class FlatNodeGenFactory {
         InlinedNodeData inline = sharedCache.getInlinedNode();
 
         if (inline != null) {
-            boolean parentAccess = hasCacheParentAccess(cache);
-
             Parameter parameter = cache.getParameter();
             String fieldName = createStaticInlinedCacheName(specialization, cache);
             ExecutableElement cacheMethod = cache.getInlinedNode().getMethod();
@@ -2190,7 +2179,6 @@ public class FlatNodeGenFactory {
             builder.typeLiteral(cache.getParameter().getType());
 
             for (InlineFieldData field : inline.getFields()) {
-
                 builder.startGroup();
                 if (field.isState()) {
                     BitSet specializationBitSet = findInlinedState(specializationState, field);
@@ -2253,11 +2241,6 @@ public class FlatNodeGenFactory {
                     builder.end(); // static call
                 }
 
-                if (specialization != null && parentAccess) {
-                    builder.startCall(".createParentAccessor");
-                    builder.typeLiteral(createSpecializationClassReferenceType(specialization));
-                    builder.end();
-                }
                 builder.end();
 
             }

@@ -810,6 +810,7 @@ suite = {
     "com.oracle.truffle.nfi.native" : {
       "subDir" : "src",
       "native" : "shared_lib",
+      "toolchain" : "sdk:LLVM_NINJA_TOOLCHAIN",
       "deliverable" : "trufflenfi",
       "use_jdk_headers" : True,
       "buildDependencies" : [
@@ -877,6 +878,7 @@ suite = {
     "com.oracle.truffle.nfi.test.native" : {
       "subDir" : "src",
       "native" : "shared_lib",
+      "toolchain" : "sdk:LLVM_NINJA_TOOLCHAIN",
       "deliverable" : "nativetest",
       "buildDependencies" : [
         "com.oracle.truffle.nfi.native",
