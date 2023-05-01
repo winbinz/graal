@@ -359,6 +359,9 @@ suite = {
         "mx:JUNIT",
         "mx:JMH_1_21",
       ],
+      "requires" : [
+        "jdk.unsupported", # sun.misc.Unsafe
+      ],
       "checkstyle" : "com.oracle.truffle.dsl.processor",
       "javaCompliance" : "17+",
       "annotationProcessors" : ["mx:JMH_1_21", "TRUFFLE_DSL_PROCESSOR"],
@@ -439,7 +442,8 @@ suite = {
       ],
       "requires" : [
         "java.compiler",
-        "jdk.management"
+        "jdk.management",
+        "jdk.unsupported", # sun.misc.Unsafe
       ],
       "checkstyle" : "com.oracle.truffle.dsl.processor",
       "javaCompliance" : "17+",
