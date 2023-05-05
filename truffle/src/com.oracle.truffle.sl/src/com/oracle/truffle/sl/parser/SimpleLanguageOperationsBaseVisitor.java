@@ -1,4 +1,3 @@
-// Generated from /home/prof/graalvm/graal/truffle/src/com.oracle.truffle.sl/src/com/oracle/truffle/sl/parser/operations/SimpleLanguageOperations.g4 by ANTLR 4.9.2
 package com.oracle.truffle.sl.parser;
 
 // DO NOT MODIFY - generated from SimpleLanguage.g4 using "mx create-sl-parser"
@@ -12,6 +11,7 @@ import org.antlr.v4.runtime.tree.AbstractParseTreeVisitor;
  * @param <T> The return type of the visit operation. Use {@link Void} for operations with no return
  *            type.
  */
+@SuppressWarnings("CheckReturnValue")
 public class SimpleLanguageOperationsBaseVisitor<T> extends AbstractParseTreeVisitor<T> implements SimpleLanguageOperationsVisitor<T> {
     /**
      * {@inheritDoc}

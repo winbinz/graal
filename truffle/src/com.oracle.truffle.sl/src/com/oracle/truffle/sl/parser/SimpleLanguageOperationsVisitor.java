@@ -1,4 +1,3 @@
-// Generated from /home/prof/graalvm/graal/truffle/src/com.oracle.truffle.sl/src/com/oracle/truffle/sl/parser/operations/SimpleLanguageOperations.g4 by ANTLR 4.9.2
 package com.oracle.truffle.sl.parser;
 
 // DO NOT MODIFY - generated from SimpleLanguage.g4 using "mx create-sl-parser"

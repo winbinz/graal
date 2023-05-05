@@ -64,10 +64,13 @@ import org.graalvm.nativeimage.UnmanagedMemory;
 import org.graalvm.nativeimage.c.function.CEntryPoint;
 import org.graalvm.nativeimage.c.function.CFunctionPointer;
 import org.graalvm.nativeimage.c.struct.RawField;
+import org.graalvm.nativeimage.c.struct.RawPointerTo;
 import org.graalvm.nativeimage.c.struct.RawStructure;
 import org.graalvm.nativeimage.c.type.WordPointer;
+import org.graalvm.word.ComparableWord;
 import org.graalvm.word.Pointer;
 import org.graalvm.word.PointerBase;
+import org.graalvm.word.WordBase;
 import org.graalvm.word.WordFactory;
 
 import com.oracle.svm.core.NeverInline;
@@ -90,6 +93,7 @@ import com.oracle.svm.core.log.Log;
 import com.oracle.svm.core.monitor.MonitorSupport;
 import com.oracle.svm.core.nodes.CFunctionEpilogueNode;
 import com.oracle.svm.core.nodes.CFunctionPrologueNode;
+import com.oracle.svm.core.stack.StackFrameVisitor;
 import com.oracle.svm.core.stack.StackOverflowCheck;
 import com.oracle.svm.core.thread.VMThreads.StatusSupport;
 import com.oracle.svm.core.threadlocal.FastThreadLocal;
@@ -559,6 +563,29 @@ public abstract class PlatformThreads {
         throw VMError.shouldNotReachHere("Shouldn't call PlatformThreads.joinThreadUnmanaged directly.");
     }
 
+    @Uninterruptible(reason = "Called from uninterruptible code.", mayBeInlined = true)
+    public ThreadLocalKey createUnmanagedThreadLocal() {
+        throw VMError.shouldNotReachHere("Shouldn't call PlatformThreads.createNativeThreadLocal directly.");
+    }
+
+    @SuppressWarnings("unused")
+    @Uninterruptible(reason = "Called from uninterruptible code.", mayBeInlined = true)
+    public void deleteUnmanagedThreadLocal(ThreadLocalKey key) {
+        throw VMError.shouldNotReachHere("Shouldn't call PlatformThreads.deleteNativeThreadLocal directly.");
+    }
+
+    @SuppressWarnings("unused")
+    @Uninterruptible(reason = "Called from uninterruptible code.", mayBeInlined = true)
+    public <T extends WordBase> T getUnmanagedThreadLocalValue(ThreadLocalKey key) {
+        throw VMError.shouldNotReachHere("Shouldn't call PlatformThreads.getNativeThreadLocalValue directly.");
+    }
+
+    @SuppressWarnings("unused")
+    @Uninterruptible(reason = "Called from uninterruptible code.", mayBeInlined = true)
+    public void setUnmanagedThreadLocalValue(ThreadLocalKey key, WordBase value) {
+        throw VMError.shouldNotReachHere("Shouldn't call PlatformThreads.setNativeThreadLocalValue directly.");
+    }
+
     @SuppressWarnings("unused")
     @Uninterruptible(reason = "Called from uninterruptible code.", mayBeInlined = true)
     public void closeOSThreadHandle(OSThreadHandle threadHandle) {
@@ -773,7 +800,7 @@ public abstract class PlatformThreads {
         boolean started = doStartThread(thread, stackSize);
         if (!started) {
             unattachedStartedThreads.decrementAndGet();
-            throw new OutOfMemoryError("unable to create native thread: possibly out of memory or process/resource limits reached");
+            throw new OutOfMemoryError("Unable to create native thread: possibly out of memory or process/resource limits reached");
         }
     }
 
@@ -839,6 +866,11 @@ public abstract class PlatformThreads {
         }
         assert !filterExceptions : "exception stack traces can be taken only for the current thread";
         return StackTraceUtils.asyncGetStackTrace(thread);
+    }
+
+    static void visitCurrentStackFrames(Pointer callerSP, StackFrameVisitor visitor) {
+        assert !isVirtual(Thread.currentThread());
+        StackTraceUtils.visitCurrentThreadStackFrames(callerSP, WordFactory.nullPointer(), visitor);
     }
 
     public static StackTraceElement[] getStackTraceAtSafepoint(Thread thread, Pointer callerSP) {
@@ -931,7 +963,7 @@ public abstract class PlatformThreads {
     static void sleep(long millis) throws InterruptedException {
         assert !isCurrentThreadVirtual();
         if (millis < 0) {
-            throw new IllegalArgumentException("timeout value is negative");
+            throw new IllegalArgumentException("Timeout value is negative");
         }
         sleep0(TimeUtils.millisToNanos(millis));
         if (Thread.interrupted()) { // clears the interrupted flag as required of Thread.sleep()
@@ -1189,7 +1221,18 @@ public abstract class PlatformThreads {
         }
     }
 
+    @RawStructure
     public interface OSThreadHandle extends PointerBase {
+    }
+
+    @RawPointerTo(OSThreadHandle.class)
+    public interface OSThreadHandlePointer extends PointerBase {
+        void write(int index, OSThreadHandle value);
+
+        OSThreadHandle read(int index);
+    }
+
+    public interface ThreadLocalKey extends ComparableWord {
     }
 }
 

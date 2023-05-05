@@ -398,7 +398,7 @@ public class SubstrateDiagnostics {
         }
 
         if (matches == 0) {
-            throw new IllegalArgumentException("the pattern '" + entry + "' not match any diagnostic thunk.");
+            throw new IllegalArgumentException("The pattern '" + entry + "' not match any diagnostic thunk.");
         }
     }
 
@@ -988,11 +988,11 @@ public class SubstrateDiagnostics {
         public void printDiagnostics(Log log, ErrorContext context, int maxDiagnosticLevel, int invocationCount) {
             String[] args = ImageSingletons.lookup(JavaMainWrapper.JavaMainSupport.class).mainArgs;
             if (args != null) {
-                log.string("Command line: ").newline();
+                log.string("Command line: ");
                 for (String arg : args) {
                     log.string("'").string(arg).string("' ");
                 }
-                log.newline();
+                log.newline().newline();
             }
         }
     }

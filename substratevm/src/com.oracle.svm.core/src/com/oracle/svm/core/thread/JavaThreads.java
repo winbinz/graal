@@ -49,6 +49,7 @@ import com.oracle.svm.core.annotate.TargetClass;
 import com.oracle.svm.core.jdk.JDK19OrLater;
 import com.oracle.svm.core.jfr.events.ThreadSleepEventJDK17;
 import com.oracle.svm.core.snippets.KnownIntrinsics;
+import com.oracle.svm.core.stack.StackFrameVisitor;
 import com.oracle.svm.util.ReflectionUtil;
 
 /**
@@ -183,7 +184,7 @@ public final class JavaThreads {
 
     static void join(Thread thread, long millis) throws InterruptedException {
         if (millis < 0) {
-            throw new IllegalArgumentException("timeout value is negative");
+            throw new IllegalArgumentException("Timeout value is negative");
         }
         if (supportsVirtual() && isVirtual(thread)) {
             VirtualThreads.singleton().join(thread, millis);
@@ -213,6 +214,22 @@ public final class JavaThreads {
             return VirtualThreads.singleton().getVirtualOrPlatformThreadStackTrace(filterExceptions, thread, callerSP);
         }
         return PlatformThreads.getStackTrace(filterExceptions, thread, callerSP);
+    }
+
+    @NeverInline("Starting a stack walk in the caller frame")
+    public static void visitCurrentStackFrames(StackFrameVisitor visitor) {
+        /*
+         * If our own thread's stack was requested, we can walk it without a VMOperation using a
+         * stack pointer. It is intentional that we use the caller stack pointer: the calling
+         * Thread.getStackTrace method itself needs to be included in the result.
+         */
+        Pointer callerSP = KnownIntrinsics.readCallerStackPointer();
+
+        if (supportsVirtual()) { // NOTE: also for platform threads!
+            VirtualThreads.singleton().visitCurrentVirtualOrPlatformThreadStackFrames(callerSP, visitor);
+        } else {
+            PlatformThreads.visitCurrentStackFrames(callerSP, visitor);
+        }
     }
 
     /** If there is an uncaught exception handler, call it. */
@@ -266,7 +283,7 @@ public final class JavaThreads {
                     boolean allowThreadLocals,
                     boolean inheritThreadLocals) {
         if (name == null) {
-            throw new NullPointerException("name cannot be null");
+            throw new NullPointerException("The name cannot be null");
         }
         tjlt.name = name;
 
